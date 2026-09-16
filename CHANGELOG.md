@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.2] - 2026-09-16 — "Bowling: Lane Oil & Pocket Precision Physics; Darts: Two-Stage Precision Aiming Loop"
+
+### Changed & Overhauled — Bowling (`src/games/Bowling.tsx`)
+- **Realistic Lane Oil Dynamics**:
+  - Center boards ($|x| < 30$) oiled from foul line to breakpoint ($y = 0.65$) with reduced friction (`0.35x`), creating skid through the heads.
+  - Outside boards ($|x| \ge 30$) feature dry maple wood with increased friction (`1.35x`).
+  - Backend ($y < 0.65$) is completely dry (`1.75x` friction multiplier), causing hook rotation to bite aggressively into the pocket.
+  - Rendered a subtle procedural oil sheen on the center boards up to the breakpoint.
+- **Dead-Center "Head-On" Penalty**:
+  - Hitting Pin 1 dead center ($|x| < 5.0$) decelerates forward ball velocity sharply (`vy *= 0.22`, `vx *= 0.15`), driving Pin 1 straight back into Pin 5 while deflecting Pins 2 and 3 outward with high lateral velocity (`vx = ±4.5`).
+  - Consistently leaves challenging splits (7-10, 4-7, or 6-10) rather than automatic strikes.
+- **Pocket Precision Strike Engine**:
+  - Strikes require a true pocket entry: hitting between Pin 1 & Pin 3 ($x \in [6.5, 14.5]$) or Pin 1 & Pin 2 ($x \in [-14.5, -6.5]$) at an optimal entry angle ($2^\circ - 4^\circ$).
+  - Triggers a violent diagonal cascade: Pin 1 sweeps into 2 $\to$ 4 $\to$ 7, ball drives into 3 $\to$ 5 $\to$ 9 $\to$ 10, and Pin 3 sweeps into 6 $\to$ 10.
+- **Calibrated Pin Mass & Flying Collision Radius**:
+  - Reduced flying pin collision radius from 21 down to 15, ensuring edge pins (7 and 10) require direct pocket entry or genuine messenger deflection.
+  - Pinned edge deflection thresholds: corner pins 7 and 10 require incoming kinetic energy $> 2.8$ to fall.
+- **Enhanced Delivery Sensitivity**:
+  - Added subtle hand release micro-drift `(Math.random() - 0.5) * 0.0035` to prevent robotic straight swipes.
+  - Lateral flick velocity scales hook response with real-time feedback.
+
+### Changed & Overhauled — Darts (`src/games/Darts.tsx`)
+- **Two-Stage Tactile Aiming Loop**:
+  - **Stage 1 (General Area Positioning)**:
+    - Players drag a large stationary base target circle (radius 26, dashed border, theme glow) across the board to select target sectors (e.g. T20, Bullseye, D16).
+    - Dynamic floating Sector Pill badge displays the exact targeted sector in real time (e.g. `[ T20 ]`, `[ D16 ]`, `[ BULL ]`).
+    - Releasing drag or tapping **"🔒 Lock Aim & Start Drift Timing"** seamlessly transitions to Stage 2.
+  - **Stage 2 (Active Drift Reticle & Timed Throw)**:
+    - Base target circle locks in place with a visible dashed anchor.
+    - An autonomous high-precision crosshair oscillates chaotically around the locked area via three overlapping sine/cosine harmonic frequencies (speed 2.4, 3.8, 5.2).
+    - A delicate dashed sightline tether connects the locked base anchor to the drifting crosshairs.
+    - Zero auto-aim snapping: tapping **"🎯 THROW DART"** records the exact millisecond coordinates of the reticle.
+    - Provided an **"✏️ Adjust"** button to toggle back to Stage 1 repositioning at any time.
+- **Persistent Pinned Darts & Chalk Sound Transitions**:
+  - Pinned darts remain embedded in the sisal board for all 3 throws of the turn.
+  - After the 3rd dart, scores are tallied, a 1400ms visual pause lets players examine the board, and a tactile thud/chalk sound plays as the board resets and turns advance.
+  - Subsequent darts (2/3 and 3/3) maintain the locked target position, allowing quick rhythm throws or optional repositioning.
+
+---
+
 ## [1.6.1] - 2026-09-16 — "Toy Curling: Power Calibration & Adjustable Curl Dynamics"
 
 ### Changed & Tuned — Toy Curling (`src/games/ToyCurling.tsx`)

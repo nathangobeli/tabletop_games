@@ -45,7 +45,8 @@ export const Darts: React.FC = () => {
   const [turn, setTurn] = useState<PlayerNumber>(1);
   const [winner, setWinner] = useState<PlayerNumber | null>(null);
   const [dartsLeftInTurn, setDartsLeftInTurn] = useState<number>(3);
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Drag to position reticle, time the sway!');
+  const [aimStage, setAimStage] = useState<'positioning' | 'timing' | 'throwing'>('positioning');
+  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Stage 1 - Drag target zone to aim, then lock aim!');
 
   // 501 Scores
   const [score501P1, setScore501P1] = useState<number>(501);
@@ -83,11 +84,11 @@ export const Darts: React.FC = () => {
       progress: number;
     } | null;
   }>({
-    baseAim: { x: CENTER, y: CENTER },
+    baseAim: { x: CENTER, y: CENTER - 90 },
     isDragging: false,
     dragPointerStart: null,
     dragBaseStart: null,
-    floatingReticle: { x: CENTER, y: CENTER },
+    floatingReticle: { x: CENTER, y: CENTER - 90 },
     flyingDart: null,
   });
 
@@ -136,6 +137,7 @@ export const Darts: React.FC = () => {
     setTurn(1);
     setWinner(null);
     setDartsLeftInTurn(3);
+    setAimStage('positioning');
     setPinnedDarts([]);
     setScore501P1(501);
     setScore501P2(501);
@@ -151,19 +153,23 @@ export const Darts: React.FC = () => {
       15: { p1Marks: 0, p2Marks: 0 },
       25: { p1Marks: 0, p2Marks: 0 },
     });
-    setStatusMessage(`Player 1: Swipe upward to throw dart 1/3`);
+    stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
+    setStatusMessage(`Player 1: Stage 1 - Drag target zone to aim, then lock aim!`);
   }, [mode]);
 
   // Turn Advancement
   const advanceTurn = useCallback(() => {
+    playChalkSound();
+    triggerHaptic('medium');
     const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
     setTurn(nextPlayer);
     setDartsLeftInTurn(3);
+    setAimStage('positioning');
     setPinnedDarts([]);
     setTurnStartScore501(nextPlayer === 1 ? score501P1 : score501P2);
     setGameStatus('active');
-    stateRef.current.baseAim = { x: CENTER, y: CENTER };
-    setStatusMessage(`Player ${nextPlayer}'s turn. Drag to aim, time the sway!`);
+    stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
+    setStatusMessage(`Player ${nextPlayer}'s turn. Stage 1: Drag target zone, then lock aim!`);
   }, [turn, score501P1, score501P2, setGameStatus]);
 
   // Handle Dart Landing & Score Update
@@ -265,11 +271,14 @@ export const Darts: React.FC = () => {
 
     // Check if turn finished (3 darts)
     if (nextDartsLeft <= 0) {
+      setDartsLeftInTurn(0);
+      setAimStage('throwing');
       setTimeout(() => {
         advanceTurn();
-      }, 1100);
+      }, 1400);
     } else {
       setDartsLeftInTurn(nextDartsLeft);
+      setAimStage('timing');
     }
   }, [mode, turn, doubleOut, pinnedDarts, score501P1, score501P2, turnStartScore501, cricketState, cricketPointsP1, cricketPointsP2, advanceTurn]);
 
@@ -287,17 +296,20 @@ export const Darts: React.FC = () => {
       const now = performance.now();
       const nowSec = now * 0.001;
 
-      // Autonomous harmonic sine-wave drift
-      const speedX = 1.9;
-      const speedY = 1.4;
-      const amplitudeX = 18;
-      const amplitudeY = 16;
-      const driftX = Math.sin(nowSec * speedX) * amplitudeX + Math.sin(nowSec * 3.7) * 4.5;
-      const driftY = Math.cos(nowSec * speedY) * amplitudeY + Math.cos(nowSec * 2.8) * 4.5;
+      // Autonomous chaotic harmonic drift (active in timing stage)
+      if (aimStage === 'timing') {
+        const speed1 = 2.4;
+        const speed2 = 3.8;
+        const speed3 = 5.2;
+        const driftX = Math.sin(nowSec * speed1) * 16.5 + Math.cos(nowSec * speed2) * 8.0 + Math.sin(nowSec * speed3) * 3.5;
+        const driftY = Math.cos(nowSec * 1.9) * 14.5 + Math.sin(nowSec * 3.1) * 7.0 + Math.cos(nowSec * 4.8) * 3.5;
 
-      const reticleX = Math.max(16, Math.min(BOARD_SIZE - 16, s.baseAim.x + driftX));
-      const reticleY = Math.max(16, Math.min(BOARD_SIZE - 16, s.baseAim.y + driftY));
-      s.floatingReticle = { x: reticleX, y: reticleY };
+        const reticleX = Math.max(16, Math.min(BOARD_SIZE - 16, s.baseAim.x + driftX));
+        const reticleY = Math.max(16, Math.min(BOARD_SIZE - 16, s.baseAim.y + driftY));
+        s.floatingReticle = { x: reticleX, y: reticleY };
+      } else {
+        s.floatingReticle = { x: s.baseAim.x, y: s.baseAim.y };
+      }
 
       // Update Flying Dart
       if (s.flyingDart) {
@@ -461,66 +473,141 @@ export const Darts: React.FC = () => {
         ctx.restore();
       }
 
-      // 8. Dynamic Floating Reticle with harmonic drift sway
+      // 8. Two-Stage Visual Targeting System: Stage 1 (Base Target Zone) vs Stage 2 (Drifting Crosshairs)
       if (!s.flyingDart && dartsLeftInTurn > 0 && winner === null) {
-        const { x: rx, y: ry } = s.floatingReticle;
         const themeColor = turn === 1 ? '#3b82f6' : '#ef4444';
         const glowColor = turn === 1 ? 'rgba(59, 130, 246, 0.45)' : 'rgba(239, 68, 68, 0.45)';
 
-        // Tether line to user base touch offset when actively dragging
-        if (s.isDragging) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 2]);
+        if (aimStage === 'positioning') {
+          // STAGE 1: Large Stationary Base Target Zone
+          const bx = s.baseAim.x;
+          const by = s.baseAim.y;
+          const targetSector = calculateHit(bx, by);
+
+          ctx.save();
+          // Subtle radial glow area
+          ctx.fillStyle = turn === 1 ? 'rgba(59, 130, 246, 0.16)' : 'rgba(239, 68, 68, 0.16)';
           ctx.beginPath();
-          ctx.moveTo(s.baseAim.x, s.baseAim.y);
-          ctx.lineTo(rx, ry);
+          ctx.arc(bx, by, 26, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Outer dashed target ring
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = s.isDragging ? 2.2 : 1.8;
+          ctx.setLineDash([5, 4]);
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = s.isDragging ? 14 : 6;
+          ctx.beginPath();
+          ctx.arc(bx, by, 26, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.setLineDash([]);
+
+          // Center crosshair marker
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(bx - 8, by);
+          ctx.lineTo(bx + 8, by);
+          ctx.moveTo(bx, by - 8);
+          ctx.lineTo(bx, by + 8);
           ctx.stroke();
 
-          // Base anchor dot
+          // Sector Target Pill badge
+          const labelText = targetSector.label || 'AIM';
+          ctx.font = 'bold 9px sans-serif';
+          const textWidth = ctx.measureText(labelText).width;
+          const badgeW = textWidth + 12;
+          const badgeH = 14;
+          const badgeY = by - 36 < 16 ? by + 30 : by - 36;
+
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(s.baseAim.x, s.baseAim.y, 3, 0, Math.PI * 2);
+          ctx.roundRect(bx - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fef08a';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labelText, bx, badgeY);
+
+          ctx.restore();
+        } else if (aimStage === 'timing') {
+          // STAGE 2: Locked Base Anchor + Tether Sightline + Active Drifting Reticle
+          const bx = s.baseAim.x;
+          const by = s.baseAim.y;
+          const { x: rx, y: ry } = s.floatingReticle;
+
+          ctx.save();
+          // A. Locked Base Anchor (dashed ring)
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(bx, by, 22, 0, Math.PI * 2);
           ctx.stroke();
           ctx.setLineDash([]);
+
+          // Center base anchor dot
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.beginPath();
+          ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // B. Sightline tether to drifting reticle
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.lineTo(rx, ry);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // C. High-Precision Drifting Reticle
+          // Outer glow target ring
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 10;
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(rx, ry, 14, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Harmonic breathing rhythm ring
+          const pulseR = 7.5 + Math.sin(nowSec * 6) * 1.5;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(rx, ry, pulseR, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Center precision pinpoint
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(rx, ry, 2, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Razor fine crosshairs
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(rx - 19, ry);
+          ctx.lineTo(rx - 13, ry);
+          ctx.moveTo(rx + 13, ry);
+          ctx.lineTo(rx + 19, ry);
+          ctx.moveTo(rx, ry - 19);
+          ctx.lineTo(rx, ry - 13);
+          ctx.moveTo(rx, ry + 13);
+          ctx.lineTo(rx, ry + 19);
+          ctx.stroke();
+
+          ctx.restore();
         }
-
-        // Outer glow target ring
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = 10;
-        ctx.strokeStyle = themeColor;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(rx, ry, 14, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Harmonic breathing rhythm ring
-        const pulseR = 8 + Math.sin(nowSec * 5.5) * 1.5;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(rx, ry, pulseR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Center precision pinpoint
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(rx, ry, 2, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Fine crosshairs
-        ctx.strokeStyle = themeColor;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(rx - 20, ry);
-        ctx.lineTo(rx - 14, ry);
-        ctx.moveTo(rx + 14, ry);
-        ctx.lineTo(rx + 20, ry);
-        ctx.moveTo(rx, ry - 20);
-        ctx.lineTo(rx, ry - 14);
-        ctx.moveTo(rx, ry + 14);
-        ctx.lineTo(rx, ry + 20);
-        ctx.stroke();
       }
 
       animId = requestAnimationFrame(render);
@@ -528,20 +615,20 @@ export const Darts: React.FC = () => {
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [pinnedDarts, dartsLeftInTurn, turn, winner, handleDartLanded]);
+  }, [pinnedDarts, dartsLeftInTurn, turn, winner, aimStage, handleDartLanded]);
 
-  // Launch Throw registering relative to reticle's actual floating coordinates at release millisecond
+  // Launch Throw registering relative to reticle's actual floating coordinates at tap millisecond (zero auto-aim snapping)
   const launchThrow = useCallback(() => {
     const s = stateRef.current;
     if (s.flyingDart || dartsLeftInTurn <= 0 || winner !== null) return;
 
-    // Millisecond of release floating coordinates with slight velocity dispersion
-    const spreadAngle = Math.random() * Math.PI * 2;
-    const spreadDist = (Math.random() * 0.7 + 0.3) * 3.5;
-    const targetX = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.x + Math.cos(spreadAngle) * spreadDist));
-    const targetY = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.y + Math.sin(spreadAngle) * spreadDist));
-
+    setAimStage('throwing');
     triggerHaptic('medium');
+
+    // Reticle floating coordinates at the exact millisecond of tap
+    const targetX = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.x));
+    const targetY = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.y));
+
     s.flyingDart = {
       startX: CENTER,
       startY: BOARD_SIZE - 15,
@@ -551,7 +638,7 @@ export const Darts: React.FC = () => {
     };
   }, [dartsLeftInTurn, winner]);
 
-  // Pointer / Touch Aiming - Eliminates direct-click snapping by moving base offset smoothly
+  // Pointer / Touch Aiming - Stage 1 Drag Positioning
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (stateRef.current.flyingDart || dartsLeftInTurn <= 0 || winner !== null) return;
     const canvas = canvasRef.current;
@@ -565,6 +652,7 @@ export const Darts: React.FC = () => {
     stateRef.current.isDragging = true;
     stateRef.current.dragPointerStart = { x: px, y: py };
     stateRef.current.dragBaseStart = { ...stateRef.current.baseAim };
+    setAimStage('positioning');
     triggerHaptic('light');
   };
 
@@ -592,7 +680,10 @@ export const Darts: React.FC = () => {
     s.isDragging = false;
     s.dragPointerStart = null;
     s.dragBaseStart = null;
-    launchThrow();
+    // Releasing drag locks target and transitions to Stage 2 drift timing
+    setAimStage('timing');
+    setStatusMessage('Aim locked! Time the drift sway and tap THROW DART.');
+    triggerHaptic('light');
   };
 
   return (
@@ -719,22 +810,66 @@ export const Darts: React.FC = () => {
           </div>
         )}
 
-        {/* Tactile Throw Button & Drift Sway Help */}
-        <div className="w-full max-w-sm flex flex-col items-center gap-1.5 mt-2 px-1">
-          <button
-            onClick={launchThrow}
-            disabled={dartsLeftInTurn <= 0 || winner !== null}
-            className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${
-              dartsLeftInTurn <= 0 || winner !== null
-                ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
-            }`}
-          >
-            <span>🎯 Throw Dart ({dartsLeftInTurn}/3)</span>
-          </button>
-          <span className="text-[10px] text-[#846b54] font-semibold text-center">
-            Drag board to reposition aim • Release or tap button to time drift sway
-          </span>
+        {/* Two-Stage Tactile Aiming & Throw Control Deck */}
+        <div className="w-full max-w-sm flex flex-col items-center gap-2 mt-2 px-1">
+          {aimStage === 'positioning' ? (
+            <div className="w-full flex flex-col gap-1.5">
+              <button
+                onClick={() => {
+                  setAimStage('timing');
+                  setStatusMessage('Aim locked! Time the drift sway and tap THROW DART.');
+                  triggerHaptic('light');
+                }}
+                disabled={dartsLeftInTurn <= 0 || winner !== null}
+                className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                  dartsLeftInTurn <= 0 || winner !== null
+                    ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/30'
+                }`}
+              >
+                <span>🔒 Lock Aim & Start Drift Timing</span>
+              </button>
+              <span className="text-[10px] text-accent-light/60 font-semibold text-center">
+                Stage 1: Drag target circle on board to position • Tap Lock to begin timing
+              </span>
+            </div>
+          ) : (
+            <div className="w-full flex flex-col gap-1.5">
+              <div className="w-full flex gap-2">
+                <button
+                  onClick={() => {
+                    setAimStage('positioning');
+                    setStatusMessage('Stage 1: Drag target circle to reposition aim.');
+                    triggerHaptic('light');
+                  }}
+                  disabled={aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null}
+                  className="px-3 py-2.5 rounded-xl font-bold text-xs uppercase bg-white/10 hover:bg-white/15 text-stone-200 border border-white/10 transition-all active:scale-95 flex items-center gap-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Reposition base target"
+                >
+                  <span>✏️ Adjust</span>
+                </button>
+
+                <button
+                  onClick={launchThrow}
+                  disabled={aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null}
+                  className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                    aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null
+                      ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 shadow-amber-500/20'
+                  }`}
+                >
+                  <span>
+                    {aimStage === 'throwing'
+                      ? '⏳ Dart in flight...'
+                      : `🎯 THROW DART (${4 - dartsLeftInTurn}/3)`}
+                  </span>
+                </button>
+              </div>
+              <span className="text-[10px] text-amber-300/80 font-semibold text-center">
+                Stage 2: Time your tap as drifting crosshairs align with your target wire!
+              </span>
+            </div>
+          )}
         </div>
       </main>
 

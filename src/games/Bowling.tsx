@@ -323,8 +323,17 @@ export const Bowling: React.FC = () => {
 
       // 1. Update Ball Physics
       if (s.ball.active) {
+        // Lane Friction & Oil Dynamics:
+        // Center boards (|x| < 30) have oil from foul line (y=0) to breakpoint (y=0.65)
+        // Outside boards (|x| >= 30) are dry wood with higher friction
+        // Past breakpoint (y >= 0.65), oil ends and hook bite sharpens into the pocket
+        const isBackEnd = s.ball.y >= 0.65;
+        const isDryBoards = Math.abs(s.ball.x) >= 30;
+        const frictionMultiplier = isBackEnd ? 1.75 : (isDryBoards ? 1.35 : 0.35);
+        const hookForce = s.ball.hook * frictionMultiplier * (0.05 + s.ball.y * 0.075);
+
         s.ball.y += s.ball.vy;
-        s.ball.x += s.ball.vx + s.ball.hook * s.ball.y * 0.08;
+        s.ball.x += s.ball.vx + hookForce;
 
         // Gutter bounds based on perspective narrowing
         const currentHalfWidth = (LANE_WIDTH_FRONT / 2) * (1 - s.ball.y) + (LANE_WIDTH_BACK / 2) * s.ball.y;
@@ -345,8 +354,8 @@ export const Bowling: React.FC = () => {
             const dy = (pin.y - s.ball.y) * 260; // scale y to px
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Pin hitbox enlarged by ~28% (dist < 18 vs 14)
-            if (dist < 18) {
+            // Realistic pin hitbox (dist < 15 vs previous 18)
+            if (dist < 15) {
               pin.isKnocked = true;
               s.pinsFallenThisRoll++;
               triggerHaptic('medium');
@@ -356,40 +365,65 @@ export const Bowling: React.FC = () => {
                 const impactOffset = s.ball.x; // offset from headpin center
                 const absOffset = Math.abs(impactOffset);
 
-                if (absOffset < 4) {
-                  // Head-on dead-center hit: absorbs ball velocity, punches straight through 1 & 5
-                  // Fails to deflect sideways into 7 and 10, leaving classic split (7-10 or 4-7)
-                  s.ball.vy *= 0.36;
-                  pin.vx = (impactOffset * 0.25) + (Math.random() - 0.5) * 0.8;
+                if (absOffset < 5.0) {
+                  // DEAD-CENTER HEAD-ON PENALTY:
+                  // Direct flat impact into Pin 1 absorbs ball forward velocity abruptly.
+                  // Ball punches straight through into Pin 5, deflecting almost no momentum to wings.
+                  s.ball.vy *= 0.22;
+                  s.ball.vx *= 0.15;
+
+                  // Pin 1 shoots straight back into 5 without lateral sweep
+                  pin.vx = (impactOffset * 0.15) + (Math.random() - 0.5) * 0.3;
                   pin.vy = 4.2;
-                  pin.vRot = (Math.random() - 0.5) * 0.2;
-                } else if (absOffset >= 5 && absOffset <= 15) {
-                  // Pocket Hit! (1-3 pocket if x > 0, 1-2 pocket if x < 0)
-                  // High kinetic lateral transfer: Pin 1 sweeps violently into 2, 4, 7,
-                  // while ball drives through 3, 5, 9, 10 for a full STRIKE domino cascade!
+                  pin.vRot = (Math.random() - 0.5) * 0.15;
+
+                  // Head-on hit directly deflects Pin 2 & 3 sharply sideways, missing 7 and 10!
+                  // This consistently leaves the notorious 7-10 or 4-7 / 6-10 splits!
+                  const p2 = s.pins.find((p) => p.id === 2 && !p.isKnocked);
+                  const p3 = s.pins.find((p) => p.id === 3 && !p.isKnocked);
+                  if (p2) {
+                    p2.isKnocked = true;
+                    p2.vx = -4.5 + (Math.random() - 0.5) * 0.5;
+                    p2.vy = 1.4;
+                    p2.vRot = -0.3;
+                    s.pinsFallenThisRoll++;
+                  }
+                  if (p3) {
+                    p3.isKnocked = true;
+                    p3.vx = 4.5 + (Math.random() - 0.5) * 0.5;
+                    p3.vy = 1.4;
+                    p3.vRot = 0.3;
+                    s.pinsFallenThisRoll++;
+                  }
+                } else if (absOffset >= 6.5 && absOffset <= 14.5) {
+                  // TRUE POCKET HIT! (1-3 pocket if x > 0, 1-2 pocket if x < 0)
+                  // High kinetic lateral transfer: Pin 1 sweeps diagonally into 2 -> 4 -> 7,
+                  // while ball drives through 3 -> 5 -> 9 -> 10 for a full STRIKE cascade!
                   if (impactOffset > 0) {
-                    // Right pocket (1-3): Pin 1 flies left into 2, 4, 7
-                    pin.vx = -6.8 + (Math.random() - 0.5) * 1.0;
-                    pin.vy = 4.6;
-                    s.ball.vx += 0.8;
+                    // Right pocket (1-3)
+                    pin.vx = -7.2 + (Math.random() - 0.5) * 0.8;
+                    pin.vy = 4.8;
+                    s.ball.vx += 0.9;
                   } else {
-                    // Left pocket (1-2): Pin 1 flies right into 3, 6, 10
-                    pin.vx = 6.8 + (Math.random() - 0.5) * 1.0;
-                    pin.vy = 4.6;
-                    s.ball.vx -= 0.8;
+                    // Left pocket (1-2)
+                    pin.vx = 7.2 + (Math.random() - 0.5) * 0.8;
+                    pin.vy = 4.8;
+                    s.ball.vx -= 0.9;
                   }
                   pin.vRot = (Math.random() - 0.5) * 0.45;
                 } else {
-                  // Glancing headpin hit
-                  pin.vx = (dx / (dist || 1)) * 5.5 + s.ball.vx * 0.4;
-                  pin.vy = 3.8;
+                  // Glancing headpin hit (light or high hit, leaves corner pins or washouts)
+                  pin.vx = (dx / (dist || 1)) * 5.2 + s.ball.vx * 0.35;
+                  pin.vy = 3.6;
                   pin.vRot = (Math.random() - 0.5) * 0.3;
+                  s.ball.vy *= 0.5;
                 }
               } else {
-                // Direct ball collision on other pins
-                pin.vx = (dx / (dist || 1)) * 6.5 + s.ball.vx * 0.5 + (Math.random() - 0.5) * 0.8;
-                pin.vy = 4.2;
-                pin.vRot = (Math.random() - 0.5) * 0.35;
+                // Direct ball collision on other pins (simulates heavy pin mass)
+                s.ball.vy *= 0.78;
+                pin.vx = (dx / (dist || 1)) * 5.8 + s.ball.vx * 0.4 + (Math.random() - 0.5) * 0.6;
+                pin.vy = 3.8;
+                pin.vRot = (Math.random() - 0.5) * 0.32;
               }
             }
           }
@@ -406,17 +440,17 @@ export const Bowling: React.FC = () => {
             const dy = (p2.y - p1.y) * 260;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Hitbox increased by ~31% from 16 to 21
-            if (dist < 21) {
-              // Corner pins 7 (x=-42) and 10 (x=42) require sufficient kinetic energy to tumble
+            // Realistic pin collision radius: reduced from 21 to 15
+            if (dist < 15) {
+              // Corner pins 7 (x=-42) and 10 (x=42) require solid energy (>2.8) to tumble
               const isCornerPin = p2.id === 7 || p2.id === 10;
               const incomingEnergy = Math.hypot(p1.vx, p1.vy);
 
-              if (!isCornerPin || incomingEnergy > 1.8) {
+              if (!isCornerPin || incomingEnergy > 2.8) {
                 p2.isKnocked = true;
-                p2.vx = (dx / (dist || 1)) * 5.4 + p1.vx * 0.42 + (Math.random() - 0.5) * 1.2;
-                p2.vy = 3.4 + Math.random() * 0.8;
-                p2.vRot = (Math.random() - 0.5) * 0.38;
+                p2.vx = (dx / (dist || 1)) * 4.8 + p1.vx * 0.35 + (Math.random() - 0.5) * 0.8;
+                p2.vy = 3.0 + Math.random() * 0.6;
+                p2.vRot = (Math.random() - 0.5) * 0.32;
                 s.pinsFallenThisRoll++;
               }
             }
@@ -493,6 +527,23 @@ export const Bowling: React.FC = () => {
         ctx.lineTo(cx + (LANE_WIDTH_BACK / 2) * ratio, 40);
         ctx.stroke();
       });
+
+      // Lane Oil Pattern Sheen (Center boards from foul line to breakpoint y=0.46)
+      const oilYEnd = LANE_HEIGHT * 0.46;
+      const oilFrontHalfW = (LANE_WIDTH_FRONT / 2) * 0.62;
+      const oilBackHalfW = (LANE_WIDTH_BACK / 2) * 0.62;
+      const oilGrad = ctx.createLinearGradient(0, LANE_HEIGHT, 0, oilYEnd);
+      oilGrad.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+      oilGrad.addColorStop(0.7, 'rgba(255, 255, 255, 0.08)');
+      oilGrad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+      ctx.fillStyle = oilGrad;
+      ctx.beginPath();
+      ctx.moveTo(cx - oilFrontHalfW, LANE_HEIGHT);
+      ctx.lineTo(cx + oilFrontHalfW, LANE_HEIGHT);
+      ctx.lineTo(cx + oilBackHalfW, oilYEnd);
+      ctx.lineTo(cx - oilBackHalfW, oilYEnd);
+      ctx.closePath();
+      ctx.fill();
 
       // Target Guide Chevrons
       const arrowY = LANE_HEIGHT * 0.58;
@@ -747,13 +798,24 @@ export const Bowling: React.FC = () => {
       setIsRolling(true);
 
       const speedY = Math.min(0.042, Math.max(0.016, Math.abs(dy) / (duration * 18)));
-      const hookCurve = dx * 0.0028; // Lateral swipe imparts curve hook
+      
+      // Calculate true swipe angle relative to straight forward (radians)
+      const swipeAngle = Math.atan2(dx, -dy);
+
+      // Micro-imperfections in hand release (subtle lateral variance so robotic dead-center strikes require touch)
+      const microDrift = (Math.random() - 0.5) * 0.0035;
+
+      // Realistic directional steering: swipe angle directly steers initial velocity
+      const ballVx = Math.sin(swipeAngle) * speedY * 55 + microDrift;
+
+      // Hook curve: derived from lateral swipe flick and spin
+      const hookCurve = (dx / Math.max(25, Math.abs(dy))) * 0.055;
 
       s.ball = {
         active: true,
         x: ballStartX,
         y: 0,
-        vx: dx * 0.007,
+        vx: ballVx,
         vy: speedY,
         hook: hookCurve,
         inGutter: false,
