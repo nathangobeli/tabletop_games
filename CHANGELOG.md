@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refined Controls Deck**:
   - Compact, ergonomic 3-row layout with aim angle slider, 0° reset button, curl direction buttons, weight presets, curl spin presets, and glowing tactile delivery button.
 
+### Added — High-Resolution iOS App Icon & PWA Manifest
+- **Full-Bleed Luxury Tabletop App Icon**:
+  - Custom high-resolution master icon depicting a royal cobalt-blue turned-wood pawn and an opposing crimson-red lacquer medallion with a golden royal crest, set against a dark herringbone mahogany wood board with brass inlay. Strictly zero dice.
+  - Generates seamless full-bleed coverage with no pre-baked borders or double-corner clipping on iOS squircle masks.
+- **Multi-Resolution Icon Suite**:
+  - `apple-touch-icon.png` and dedicated sizes (`180x180`, `167x167`, `152x152`, `120x120`) for iPhones, iPads, and iOS Desktop Web Clips.
+  - `pwa-512x512.png` and `pwa-192x192.png` with standard and maskable support.
+  - `favicon.ico`, `favicon-32x32.png`, and `favicon-16x16.png` for desktop browsers.
+  - `site.webmanifest` and `manifest.json` configured for standalone full-screen mobile play.
+  - iOS meta tags configured in `index.html`: `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, and `apple-mobile-web-app-title`.
+
 ---
 
 ## [1.6.0] - 2026-09-16 — "Expansion: Toy Curling, Hex, Matching, Nine Men's Morris, Hare and Hounds, and Hit and Blow"
