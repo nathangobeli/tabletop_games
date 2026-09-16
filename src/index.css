@@ -1,0 +1,237 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* Custom utility for safe area padding on notch devices */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
+}
+
+/* Clubhouse Wood Table Texture Overlay - Procedural feTurbulence & Directional Ambient Vignette */
+.wood-table-bg {
+  background-color: #82542e;
+  background-image: 
+    radial-gradient(ellipse 120% 100% at 20% 15%, rgba(255, 235, 205, 0.45) 0%, rgba(138, 86, 46, 0.3) 45%, rgba(46, 26, 11, 0.72) 80%, rgba(20, 10, 4, 0.9) 100%),
+    repeating-linear-gradient(90deg, 
+      rgba(30, 15, 6, 0.45) 0px, 
+      rgba(30, 15, 6, 0.45) 2px, 
+      transparent 2px, 
+      transparent 200px, 
+      rgba(255, 255, 255, 0.08) 201px, 
+      rgba(30, 15, 6, 0.35) 202px
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='600'%3E%3Cdefs%3E%3Cfilter id='grain' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015 0.16' numOctaves='4' seed='7' result='noise'/%3E%3CfeColorMatrix type='matrix' values='0.3 0 0 0 0.52  0 0.22 0 0 0.34  0 0 0.14 0 0.18  0 0 0 0.28 0'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='%236e4321' filter='url(%23grain)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat, repeat;
+  background-size: cover, 202px 100%, 300px 600px;
+}
+
+/* 3-Tier Global Elevation Tokens */
+.table-recess {
+  box-shadow: inset 2px 4px 8px rgba(0, 0, 0, 0.5), inset -1px -1px 3px rgba(255, 255, 255, 0.15);
+}
+
+.table-flat {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+}
+
+.table-lifted {
+  box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+
+.transition-spring {
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Deep Physical 3D Shadows (Clubhouse Style) */
+.clubhouse-board-depth {
+  box-shadow: 
+    0 16px 36px -4px rgba(45, 26, 12, 0.45),
+    0 30px 60px -12px rgba(25, 15, 6, 0.35),
+    inset 0 2px 4px rgba(255, 255, 255, 0.4),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.clubhouse-piece-shadow {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+.clubhouse-inset-recess {
+  box-shadow: 
+    inset 2px 4px 8px rgba(0, 0, 0, 0.5),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.15),
+    0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+/* Elastic tactile touch interaction on buttons */
+button:not(:disabled) {
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s ease;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+/* Micro-animations */
+@keyframes touchRipple {
+  0% {
+    r: 6;
+    opacity: 0.9;
+    stroke-width: 4;
+  }
+  100% {
+    r: 38;
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+
+.animate-ripple circle:first-child {
+  animation: touchRipple 0.45s ease-out forwards;
+}
+
+@keyframes cardShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px) rotate(-3deg); }
+  40%, 80% { transform: translateX(6px) rotate(3deg); }
+}
+
+.animate-shake {
+  animation: cardShake 0.32s ease-in-out;
+}
+
+@keyframes sparkleFall {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tw-translate-x), var(--tw-translate-y)) scale(0.3) rotate(360deg);
+  }
+}
+
+@keyframes stoneSowBounce {
+  0% {
+    transform: translateY(0) scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-16px) scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-sow-bounce {
+  animation: stoneSowBounce 0.28s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+@keyframes stoneDropPulse {
+  0% {
+    transform: scale(1.3);
+    filter: brightness(1.4);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.animate-pit-drop {
+  animation: stoneDropPulse 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes connectFourDrop {
+  0% {
+    transform: translateY(var(--tw-drop-start, -280px));
+    animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  }
+  75% {
+    transform: translateY(0px);
+    animation-timing-function: ease-out;
+  }
+  85% {
+    transform: translateY(-8px);
+    animation-timing-function: ease-in;
+  }
+  94% {
+    transform: translateY(0px);
+    animation-timing-function: ease-out;
+  }
+  97% {
+    transform: translateY(-2px);
+    animation-timing-function: ease-in;
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-disc-fall {
+  animation: connectFourDrop var(--tw-fall-duration, 550ms) forwards;
+}
+
+@keyframes diceTumble {
+  0% {
+    transform: rotate(0deg) scale(0.85);
+  }
+  25% {
+    transform: rotate(90deg) scale(1.15) translateY(-6px);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.9) translateY(4px);
+  }
+  75% {
+    transform: rotate(270deg) scale(1.1) translateY(-2px);
+  }
+  100% {
+    transform: rotate(360deg) scale(1) translateY(0);
+  }
+}
+
+.animate-dice-roll {
+  animation: diceTumble 0.52s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes turnPulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-turn-pulse {
+  animation: turnPulse 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
