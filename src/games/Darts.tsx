@@ -869,8 +869,7 @@ export const Darts: React.FC = () => {
         gameId="darts"
         gameName={`Darts (${state.mode === '501' ? '501 Countdown' : 'Cricket'})`}
         turn={state.turn}
-        statusText={`Player ${state.turn}'s Turn (${state.dartsLeftInTurn} Darts)`}
-        subStatusText={state.statusMessage}
+        statusMessage={state.statusMessage}
         onRestart={() => dispatch({ type: 'RESET_GAME' })}
       />
 

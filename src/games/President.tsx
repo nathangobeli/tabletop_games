@@ -436,8 +436,8 @@ export const President: React.FC = () => {
         gameId="president"
         gameName="President (Daifugo)"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={resetGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Saloon Table - Responsive Full-Viewport Scaling */}

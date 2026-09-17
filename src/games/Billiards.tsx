@@ -799,8 +799,8 @@ export const Billiards: React.FC = () => {
         gameId="billiards"
         gameName="Billiards (8-Ball)"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={setupRack}
+        statusMessage={statusMessage}
       />
 
       {/* Main Playing Area */}

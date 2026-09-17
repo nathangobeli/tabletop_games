@@ -896,14 +896,27 @@ export const Bowling: React.FC = () => {
     s.dragMode = 'none';
   };
 
+  const handleRestart = useCallback(() => {
+    p1RawRolls.current = [];
+    p2RawRolls.current = [];
+    setP1Frames(Array.from({ length: 10 }, () => ({ rolls: [], cumulativeScore: null })));
+    setP2Frames(Array.from({ length: 10 }, () => ({ rolls: [], cumulativeScore: null })));
+    setTurn(1);
+    setCurrentFrame(1);
+    setCurrentRollInFrame(1);
+    setWinner(null);
+    setupPins(false);
+    setStatusMessage('Player 1: Drag ball along approach to aim, swipe up to roll!');
+  }, [setupPins]);
+
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="bowling"
         gameName="10-Frame Bowling"
         turn={turn}
-        statusText={`Player ${turn}'s Turn (Frame ${currentFrame}/10)`}
-        subStatusText={statusMessage}
+        onRestart={handleRestart}
+        statusMessage={statusMessage}
       />
 
       {/* Main Container */}

@@ -687,14 +687,23 @@ export const ToyCurling: React.FC = () => {
     }
   };
 
+  const handleRestart = useCallback(() => {
+    setP1Score(0);
+    setP2Score(0);
+    setCurrentEnd(1);
+    setWinner(null);
+    initStones();
+    setStatusMessage('Player 1: Aim vector, choose curl, then drag launch!');
+  }, [initStones]);
+
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="toy-curling"
         gameName="Toy Curling"
         turn={turn}
-        statusText={`Player ${turn}'s Delivery (End ${currentEnd}/${totalEnds})`}
-        subStatusText={statusMessage}
+        onRestart={handleRestart}
+        statusMessage={statusMessage}
       />
 
       {/* Main Tabletop Sheet Arena */}
@@ -936,13 +945,7 @@ export const ToyCurling: React.FC = () => {
         <GameOverModal
           winner={winner}
           gameName="Toy Curling"
-          onRestart={() => {
-            setP1Score(0);
-            setP2Score(0);
-            setCurrentEnd(1);
-            setWinner(null);
-            initStones();
-          }}
+          onRestart={handleRestart}
           onMenu={resetToMenu}
         />
       )}

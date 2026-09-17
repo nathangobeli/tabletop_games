@@ -414,14 +414,38 @@ export const MiniShogi: React.FC = () => {
     ? getLegalDrops(selectedReservePiece, turn, grid)
     : [];
 
+  const handleRestart = useCallback(() => {
+    setTurn(1);
+    setWinner(null);
+    setP1Reserve([]);
+    setP2Reserve([]);
+    setSelectedSquare(null);
+    setSelectedReservePiece(null);
+    setStatusMessage('Player 1: Select a piece to move or drop.');
+    const b: BoardGrid = Array.from({ length: 5 }, () => Array(5).fill(null));
+    b[0][0] = { id: 'p2-r', type: 'R', owner: 2, isPromoted: false };
+    b[0][1] = { id: 'p2-b', type: 'B', owner: 2, isPromoted: false };
+    b[0][2] = { id: 'p2-s', type: 'S', owner: 2, isPromoted: false };
+    b[0][3] = { id: 'p2-g', type: 'G', owner: 2, isPromoted: false };
+    b[0][4] = { id: 'p2-k', type: 'K', owner: 2, isPromoted: false };
+    b[1][4] = { id: 'p2-p', type: 'P', owner: 2, isPromoted: false };
+    b[4][0] = { id: 'p1-k', type: 'K', owner: 1, isPromoted: false };
+    b[4][1] = { id: 'p1-g', type: 'G', owner: 1, isPromoted: false };
+    b[4][2] = { id: 'p1-s', type: 'S', owner: 1, isPromoted: false };
+    b[4][3] = { id: 'p1-b', type: 'B', owner: 1, isPromoted: false };
+    b[4][4] = { id: 'p1-r', type: 'R', owner: 1, isPromoted: false };
+    b[3][0] = { id: 'p1-p', type: 'P', owner: 1, isPromoted: false };
+    setGrid(b);
+  }, []);
+
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="mini-shogi"
         gameName="Mini Shogi (5x5)"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={handleRestart}
+        statusMessage={statusMessage}
       />
 
       {/* Main Container */}

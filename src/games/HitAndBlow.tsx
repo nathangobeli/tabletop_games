@@ -221,8 +221,8 @@ export const HitAndBlow: React.FC = () => {
         gameId="hit-and-blow"
         gameName="Hit and Blow"
         turn={turn}
-        statusText={`Player ${turn}'s Turn (${gameMode === 'equal_duel' ? 'Duel' : 'Vs. Codebreaker'})`}
-        subStatusText={statusMessage}
+        onRestart={resetGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Console Container */}

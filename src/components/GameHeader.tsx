@@ -12,6 +12,7 @@ interface GameHeaderProps {
   gameName?: string;
   subtitle?: string;
   subStatusText?: string;
+  statusText?: string;
   turn: PlayerNumber | 0;
   scoreP1?: number | string;
   scoreP2?: number | string;
@@ -33,6 +34,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   gameName,
   subtitle,
   subStatusText,
+  statusText,
   turn,
   scoreP1,
   scoreP2,
@@ -69,6 +71,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   const displayTitle = title || gameName || 'Game';
   const displaySubtitle = subtitle || subStatusText;
   const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? p1Label : resolvedP2Label;
+  const effectiveStatusMessage = statusMessage || subStatusText || statusText;
 
   // Ultra-compact single row for landscape viewports
   if (isLandscape) {
@@ -139,6 +142,14 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
               </span>
             )}
           </div>
+
+          {/* Dynamic Instructions & Tips Pill (Landscape) */}
+          {effectiveStatusMessage && (
+            <div className="flex items-center gap-1.5 bg-container-dark text-accent-light px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold shadow-inner max-w-[150px] xs:max-w-[220px] sm:max-w-[320px] md:max-w-[440px] truncate animate-fade-in shrink min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="truncate">{effectiveStatusMessage}</span>
+            </div>
+          )}
 
           {/* Right: Mode Selector Pill & Compact Action Icons */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -482,9 +493,10 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
         </div>
 
         {/* Dynamic Status / Banner Message */}
-        {statusMessage && (
+        {effectiveStatusMessage && (
           <div className="bg-container-dark text-accent-light text-center py-1 px-3 rounded-lg text-[11px] font-bold tracking-wide shadow-inner animate-fade-in flex items-center justify-center gap-1.5">
-            <span>{statusMessage}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span>{effectiveStatusMessage}</span>
           </div>
         )}
       </header>

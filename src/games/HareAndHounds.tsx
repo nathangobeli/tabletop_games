@@ -217,8 +217,8 @@ export const HareAndHounds: React.FC = () => {
         gameId="hare-and-hounds"
         gameName="Hare and Hounds"
         turn={turn}
-        statusText={`Player ${turn}'s Turn (${turn === 1 ? 'Bronze Hounds' : 'Copper Hare'})`}
-        subStatusText={statusMessage}
+        onRestart={resetGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Track Arena */}

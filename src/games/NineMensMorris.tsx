@@ -325,8 +325,8 @@ export const NineMensMorris: React.FC = () => {
         gameId="nine-mens-morris"
         gameName="Nine Men's Morris"
         turn={turn}
-        statusText={`Player ${turn}'s Turn (${turn === 1 ? 'Dark Walnut' : 'Light Maple'})`}
-        subStatusText={statusMessage}
+        onRestart={handleRestart}
+        statusMessage={statusMessage}
       />
 
       {/* Main Board Arena */}

@@ -375,8 +375,7 @@ export const Backgammon: React.FC = () => {
         p1Label="P1 (Red)"
         p2Label="P2 (Dark)"
         onRestart={resetGame}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        statusMessage={statusMessage}
       />
 
       {/* Main Board Container - Responsive on iPhone, iPad, PC */}

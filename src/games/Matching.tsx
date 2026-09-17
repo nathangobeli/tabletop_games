@@ -276,8 +276,8 @@ export const Matching: React.FC = () => {
         gameId="matching"
         gameName="Matching (Memory)"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={initGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Tabletop Grid Arena */}

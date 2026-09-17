@@ -446,8 +446,8 @@ export const LastCard: React.FC = () => {
         gameId="last-card"
         gameName="Last Card"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={resetGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Table - Full-Viewport Responsive Scaling */}

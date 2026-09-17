@@ -269,16 +269,10 @@ export const Hex: React.FC = () => {
         gameId="hex"
         gameName="Hex"
         turn={turn}
-        statusText={
+        onRestart={handleRestart}
+        statusMessage={
           winner !== null
-            ? `Player ${winner} formed an unbroken chain!`
-            : isCpuTurn
-            ? '🤖 CPU is analyzing connectivity...'
-            : `Player ${turn}'s Turn (${turn === 1 ? 'Connect Blue Top-Bottom' : 'Connect Red Left-Right'})`
-        }
-        subStatusText={
-          winner !== null
-            ? `Player ${winner} wins the match!`
+            ? `Player ${winner} formed an unbroken chain! Victory!`
             : pendingMove
             ? `Selected hex (${pendingMove.r + 1}, ${pendingMove.c + 1}) — Tap Confirm or tap again to place`
             : `Move ${moveCount + 1}: Tap any vacant hex to target your acrylic gem`

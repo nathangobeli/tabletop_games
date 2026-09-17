@@ -636,8 +636,8 @@ export const Hanafuda: React.FC = () => {
         gameId="hanafuda"
         gameName="Hanafuda (Koi-Koi)"
         turn={turn}
-        statusText={`Player ${turn}'s Turn`}
-        subStatusText={statusMessage}
+        onRestart={resetGame}
+        statusMessage={statusMessage}
       />
 
       {/* Main Mat Arena - Responsive scaling */}

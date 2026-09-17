@@ -5,6 +5,18 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.6] - 2026-09-17 — "Universal Dynamic Instructions & Tips Box Across All 26 Games"
+
+### Fixed — Universal Instruction & Tips Box Coverage (`src/components/GameHeader.tsx`, `src/games/*`)
+- **Prop Normalization & Unified Resolution**:
+  - Unified `statusMessage`, `subStatusText`, and `statusText` into `effectiveStatusMessage = statusMessage || subStatusText || statusText` in `GameHeader.tsx`.
+  - Resolved missing instruction box bug affecting 15 games (`Backgammon`, `Billiards`, `Bowling`, `Darts`, `Hanafuda`, `Hare and Hounds`, `Hex`, `Hit and Blow`, `Last Card`, `Matching`, `Mini Shogi`, `Nine Men's Morris`, `President`, `Riichi Mahjong`, `Toy Curling`) that previously passed `subStatusText` which was omitted from the status banner.
+  - Standardized all 26 catalog titles to explicitly pass `statusMessage={...}` and provide proper reset handlers (`onRestart`).
+- **Dynamic Portrait Status Box**:
+  - Displays the dark instructional banner with glowing amber indicator (`<span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />`) below player cards in portrait mode.
+- **Dynamic Landscape Instruction Pill**:
+  - Added a compact, truncated live instruction pill (`hidden sm:flex items-center gap-1.5 bg-container-dark text-accent-light px-2.5 py-0.5 rounded-full`) directly inside the single-row landscape header, ensuring tips remain visible without sacrificing board space.
+
 ---
 
 ## [1.8.5] - 2026-09-17 — "Mobile Viewport Scroll Lock Fix, Compact Landscape Header & Dual-Orientation Air Hockey"
