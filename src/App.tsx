@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { GameProvider, useGame } from './context/GameContext';
 import { MainMenu } from './components/MainMenu';
 import { TouchRippleOverlay } from './components/TouchRippleOverlay';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Dynamic Code-Splitting: Lazy-load individual tabletop titles on-demand
 const Mancala = React.lazy(() => import('./games/Mancala').then((m) => ({ default: m.Mancala })));
@@ -52,7 +53,7 @@ const GameLoadingFallback: React.FC = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { activeGame, theme } = useGame();
+  const { activeGame, theme, resetToMenu } = useGame();
 
   const renderActiveGame = () => {
     switch (activeGame) {
@@ -116,11 +117,13 @@ const AppContent: React.FC = () => {
   return (
     <div className={`relative w-screen h-dvh min-h-dvh overflow-hidden theme-${theme} flex flex-col select-none transition-colors duration-300 bg-primary-bg`}>
       <TouchRippleOverlay />
-      {/* Screen slide transition wrapper with dynamic Suspense fallback */}
+      {/* Screen slide transition wrapper with dynamic Suspense fallback and Error Boundary */}
       <div key={activeGame || 'menu'} className="w-full h-full min-h-0 flex-1 flex flex-col overflow-hidden">
-        <Suspense fallback={<GameLoadingFallback />}>
-          {renderActiveGame()}
-        </Suspense>
+        <ErrorBoundary onReset={resetToMenu}>
+          <Suspense fallback={<GameLoadingFallback />}>
+            {renderActiveGame()}
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
   );

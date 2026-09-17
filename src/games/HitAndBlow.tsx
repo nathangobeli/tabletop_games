@@ -221,7 +221,7 @@ export const HitAndBlow: React.FC = () => {
         gameId="hit-and-blow"
         gameName="Hit and Blow"
         turn={turn}
-        onRestart={resetGame}
+        onRestart={initGame}
         statusMessage={statusMessage}
       />
 

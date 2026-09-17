@@ -5,6 +5,24 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.7] - 2026-09-17 — "Blank Screen Elimination & Resilient Error Boundary Across Tabletop Games"
+
+### Fixed — Runtime Crash & Blank Screen Elimination (`src/games/*`)
+- **Hare and Hounds (`src/games/HareAndHounds.tsx`)**:
+  - Fixed runtime crash caused by passing undefined `resetGame` to `GameHeader.onRestart`. Connected to the correct `handleRestart` function.
+- **Hit and Blow (`src/games/HitAndBlow.tsx`)**:
+  - Fixed runtime crash caused by passing undefined `resetGame` to `GameHeader.onRestart`. Connected to the correct `initGame` handler.
+- **Toy Curling (`src/games/ToyCurling.tsx`)**:
+  - Fixed runtime crash caused by referencing undefined constant `BUTTON_Y` inside `calculateDynamicShadow`. Connected to proper `HOUSE_CY` house center coordinate.
+
+### Added — Resilient Game Error Boundary (`src/components/ErrorBoundary.tsx`, `src/App.tsx`)
+- **Clubhouse Resilient Error Boundary**:
+  - Created `<ErrorBoundary>` wrapped around lazy-loaded `<Suspense>` active game views.
+  - Prevents single-component runtime exceptions from unmounting the entire React DOM tree and leaving the user on a blank screen with no navigation.
+  - Displays a tactile Clubhouse-themed recovery modal ("Table Issue Encountered") with options to "Return to Menu" (safely resets context and game state) or "Try Again" (re-mounts the game).
+
+---
+
 ## [1.8.6] - 2026-09-17 — "Universal Dynamic Instructions & Tips Box Across All 26 Games"
 
 ### Fixed — Universal Instruction & Tips Box Coverage (`src/components/GameHeader.tsx`, `src/games/*`)

@@ -565,7 +565,7 @@ export const ToyCurling: React.FC = () => {
         ctx.translate(sx, sy);
 
         // Dynamic 2.5D Stone Shadow relative to house button light
-        const shadow = calculateDynamicShadow(sx, sy, SHEET_WIDTH * 0.5, BUTTON_Y, 5.5, 3.5);
+        const shadow = calculateDynamicShadow(sx, sy, SHEET_WIDTH * 0.5, HOUSE_CY, 5.5, 3.5);
         ctx.fillStyle = shadow.color;
         ctx.beginPath();
         ctx.ellipse(shadow.offsetX, shadow.offsetY, STONE_RADIUS, STONE_RADIUS * 0.78, 0, 0, Math.PI * 2);

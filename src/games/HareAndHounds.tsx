@@ -217,7 +217,7 @@ export const HareAndHounds: React.FC = () => {
         gameId="hare-and-hounds"
         gameName="Hare and Hounds"
         turn={turn}
-        onRestart={resetGame}
+        onRestart={handleRestart}
         statusMessage={statusMessage}
       />
 
