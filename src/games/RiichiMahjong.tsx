@@ -1,7 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { GameContainer } from '../components/GameContainer';
+import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber } from '../types/game';
 import {
   playTileClackSound,
@@ -266,37 +268,45 @@ export const MahjongTileGraphic: React.FC<{
     ? 'text-blue-700'
     : 'text-amber-800';
 
-  const w = small ? 'w-8 sm:w-10 h-11 sm:h-14' : 'w-10 sm:w-12 md:w-14 h-14 sm:h-17 md:h-20';
+  const tileWidth = small ? 'clamp(18px, 3.2vw, 30px)' : 'clamp(24px, 4.8vw, 42px)';
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className={`relative ${w} rounded-lg select-none transition-all duration-150 transform cursor-pointer flex items-center justify-center p-0.5 ${
+      className={`relative rounded-lg select-none transition-all duration-150 transform cursor-pointer flex items-center justify-center p-0.5 shrink-0 ${
         isSelected
           ? 'ring-3 ring-amber-400 -translate-y-3 scale-108 z-30 shadow-2xl'
           : 'hover:-translate-y-1 shadow-md hover:shadow-xl active:scale-95'
       }`}
       style={{
+        width: tileWidth,
+        aspectRatio: '3 / 4',
         backgroundColor: '#78350f', // Bamboo wood backing
       }}
     >
       {/* Ivory Resin Front Face */}
-      <div className="w-full h-full rounded-md bg-[#fffdfa] border border-[#d6d3d1] shadow-inner flex flex-col items-center justify-between p-1 relative overflow-hidden">
+      <div className="w-full h-full rounded-md bg-[#fffdfa] border border-[#d6d3d1] shadow-inner flex flex-col items-center justify-between p-0.5 sm:p-1 relative overflow-hidden">
         {/* Kanji / Value Glyph */}
-        <span className={`text-base sm:text-lg md:text-xl font-black ${textColor} leading-none`}>
+        <span
+          className={`font-black ${textColor} leading-none`}
+          style={{ fontSize: small ? 'clamp(9px, 1.8vw, 13px)' : 'clamp(12px, 2.5vw, 20px)' }}
+        >
           {tile.kanji}
         </span>
 
         {/* Small label indicator */}
-        <span className="text-[7px] font-bold text-stone-500 uppercase tracking-tighter">
+        <span
+          className="font-bold text-stone-500 uppercase tracking-tighter"
+          style={{ fontSize: small ? '6px' : 'clamp(6px, 0.9vw, 8px)' }}
+        >
           {tile.suit === 'honor' ? tile.label.slice(0, 3) : `${tile.value}${tile.suit[0]}`}
         </span>
 
         {/* Dora Star */}
         {isDora && (
-          <span className="absolute top-0.5 right-1 text-[8px] text-amber-500 font-black">
+          <span className="absolute top-0.5 right-1 text-[7px] sm:text-[8px] text-amber-500 font-black">
             ★
           </span>
         )}
@@ -377,9 +387,9 @@ export const RiichiMahjong: React.FC = () => {
   }, [setGameStatus]);
 
   // Initial deal
-  useState(() => {
+  useEffect(() => {
     resetGame();
-  });
+  }, [resetGame]);
 
   const activeHand = turn === 1 ? handP1 : handP2;
   const activeMelds = turn === 1 ? meldsP1 : meldsP2;
@@ -566,7 +576,7 @@ export const RiichiMahjong: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
+    <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="riichi-mahjong"
         gameName="Riichi Mahjong (2-Player Duel)"
@@ -576,7 +586,7 @@ export const RiichiMahjong: React.FC = () => {
       />
 
       {/* Main Mat Arena - Responsive scaling */}
-      <main className="flex-1 min-h-0 flex flex-col items-center justify-between p-2 sm:p-3 overflow-hidden w-full max-w-4xl mx-auto">
+      <main className="flex-1 min-h-0 flex flex-col items-center justify-between p-1.5 sm:p-3 overflow-hidden w-full max-w-5xl mx-auto">
         {/* Top Status & Point Sticks */}
         <div className="w-full flex items-center justify-between px-3 py-1.5 bg-black/60 border border-[#3e444c] rounded-2xl shadow-md shrink-0">
           <div className="flex items-center gap-2">
@@ -617,13 +627,13 @@ export const RiichiMahjong: React.FC = () => {
 
         {/* Central Green Baize Table with Discard River (Kawa) */}
         <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center py-1">
-          <div className="w-full h-full max-h-[46vh] bg-[#064e3b] rounded-3xl border-4 border-[#022c22] shadow-2xl p-2.5 sm:p-3 flex flex-col justify-between relative overflow-hidden clubhouse-board-depth">
+          <div className="w-full h-full max-h-[46vh] bg-[#064e3b] rounded-3xl border-4 border-[#022c22] shadow-2xl p-2 sm:p-3 flex flex-col justify-between relative overflow-hidden clubhouse-board-depth">
             {/* P2 Discard River (Top) */}
             <div className="w-full flex flex-col items-center">
               <span className="text-[9px] font-bold text-emerald-300/70 uppercase mb-0.5">
                 Player 2 River (Discards)
               </span>
-              <div className="flex flex-wrap gap-1 max-w-sm justify-center">
+              <div className="flex flex-wrap gap-1 max-w-md justify-center">
                 {riverP2.map((tile) => (
                   <MahjongTileGraphic key={tile.id} tile={tile} small />
                 ))}
@@ -642,7 +652,7 @@ export const RiichiMahjong: React.FC = () => {
 
             {/* P1 Discard River (Bottom) */}
             <div className="w-full flex flex-col items-center">
-              <div className="flex flex-wrap gap-1 max-w-sm justify-center mb-0.5">
+              <div className="flex flex-wrap gap-1 max-w-md justify-center mb-0.5">
                 {riverP1.map((tile) => (
                   <MahjongTileGraphic key={tile.id} tile={tile} small />
                 ))}
@@ -651,60 +661,60 @@ export const RiichiMahjong: React.FC = () => {
                 Player 1 River (Discards)
               </span>
             </div>
-
-            {/* Action Bar (Draw / Tsumo / Ron / Pon / Riichi) */}
-            <div className="w-full flex items-center justify-center gap-2 z-20 mt-1">
-              {turnStep === 'draw' && !activeRiichi && (
-                <button
-                  type="button"
-                  onClick={handleDrawTile}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all flex items-center gap-1.5"
-                >
-                  <span>🀄 Draw Tile</span>
-                </button>
-              )}
-
-              {tsumoEvaluation.isWin && (
-                <button
-                  type="button"
-                  onClick={() => handleTsumoWin()}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 font-black text-xs uppercase tracking-wider shadow-xl animate-bounce active:scale-95 transition-all"
-                >
-                  🏆 Declare TSUMO! ({tsumoEvaluation.points}p)
-                </button>
-              )}
-
-              {ronEvaluation.isWin && (
-                <button
-                  type="button"
-                  onClick={handleRonWin}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-white font-black text-xs uppercase tracking-wider shadow-xl animate-bounce active:scale-95 transition-all"
-                >
-                  ⚡ Declare RON! ({ronEvaluation.points}p)
-                </button>
-              )}
-
-              {canPon && !activeRiichi && (
-                <button
-                  type="button"
-                  onClick={handleCallPon}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all"
-                >
-                  📢 Call PON!
-                </button>
-              )}
-
-              {!activeRiichi && (turn === 1 ? pointsP1 : pointsP2) >= 1000 && activeMelds.length === 0 && (
-                <button
-                  type="button"
-                  onClick={handleDeclareRiichi}
-                  className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-amber-400 border border-amber-400/40 font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all"
-                >
-                  🎯 Riichi (1,000p)
-                </button>
-              )}
-            </div>
           </div>
+        </div>
+
+        {/* Floating Call Action Bar directly above player hand */}
+        <div className="w-full flex items-center justify-center gap-2 z-20 my-1 shrink-0">
+          {turnStep === 'draw' && !activeRiichi && (
+            <button
+              type="button"
+              onClick={handleDrawTile}
+              className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <span>🀄 Draw Tile</span>
+            </button>
+          )}
+
+          {tsumoEvaluation.isWin && (
+            <button
+              type="button"
+              onClick={() => handleTsumoWin()}
+              className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 font-black text-xs uppercase tracking-wider shadow-xl animate-bounce active:scale-95 transition-all"
+            >
+              🏆 Declare TSUMO! ({tsumoEvaluation.points}p)
+            </button>
+          )}
+
+          {ronEvaluation.isWin && (
+            <button
+              type="button"
+              onClick={handleRonWin}
+              className="px-4 sm:px-5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-white font-black text-xs uppercase tracking-wider shadow-xl animate-bounce active:scale-95 transition-all"
+            >
+              ⚡ Declare RON! ({ronEvaluation.points}p)
+            </button>
+          )}
+
+          {canPon && !activeRiichi && (
+            <button
+              type="button"
+              onClick={handleCallPon}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all"
+            >
+              📢 Call PON!
+            </button>
+          )}
+
+          {!activeRiichi && (turn === 1 ? pointsP1 : pointsP2) >= 1000 && activeMelds.length === 0 && (
+            <button
+              type="button"
+              onClick={handleDeclareRiichi}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-amber-400 border border-amber-400/40 font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all"
+            >
+              🎯 Riichi (1,000p)
+            </button>
+          )}
         </div>
 
         {/* Active Player Hand & Exposed Melds */}
@@ -714,13 +724,13 @@ export const RiichiMahjong: React.FC = () => {
               Player {turn}'s Hand ({fullHand.length} tiles)
             </span>
             {turnStep === 'discard' && (
-              <span className="text-amber-400 font-black">
+              <span className="text-amber-400 font-black animate-pulse">
                 Tap tile to discard
               </span>
             )}
           </div>
 
-          <div className="w-full flex items-center justify-center gap-1 sm:gap-1.5 overflow-x-auto py-2 px-2">
+          <div className="w-full flex items-center justify-center gap-1 sm:gap-1.5 overflow-x-auto py-1 px-1">
             {/* Concealed Hand */}
             {activeHand.map((tile) => (
               <MahjongTileGraphic
@@ -734,7 +744,7 @@ export const RiichiMahjong: React.FC = () => {
 
             {/* Drawn 14th Tile */}
             {drawnTile && (
-              <div className="ml-2 pl-2 border-l-2 border-white/20">
+              <div className="ml-1.5 pl-1.5 border-l-2 border-white/20">
                 <MahjongTileGraphic
                   tile={drawnTile}
                   isSelected={selectedTileId === drawnTile.id}
@@ -746,7 +756,7 @@ export const RiichiMahjong: React.FC = () => {
 
             {/* Exposed Melds */}
             {activeMelds.length > 0 && (
-              <div className="ml-3 pl-3 border-l-2 border-amber-400/40 flex gap-2">
+              <div className="ml-2 pl-2 border-l-2 border-amber-400/40 flex gap-1.5">
                 {activeMelds.map((meld, mIdx) => (
                   <div key={mIdx} className="flex gap-0.5 bg-black/30 p-1 rounded-lg">
                     {meld.map((t) => (
@@ -786,6 +796,6 @@ export const RiichiMahjong: React.FC = () => {
           onMenu={resetToMenu}
         />
       )}
-    </div>
+    </GameContainer>
   );
 };

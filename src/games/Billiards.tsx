@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { GameContainer } from '../components/GameContainer';
+import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber } from '../types/game';
 import {
   triggerHaptic,
@@ -119,6 +121,7 @@ const createRackBalls = (): Ball[] => {
 
 export const Billiards: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
+  const { isLandscape } = useOrientation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [turn, setTurn] = useState<PlayerNumber>(1);
@@ -791,7 +794,7 @@ export const Billiards: React.FC = () => {
   }).length;
 
   return (
-    <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
+    <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="billiards"
         gameName="Billiards (8-Ball)"
@@ -801,86 +804,164 @@ export const Billiards: React.FC = () => {
       />
 
       {/* Main Playing Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
-        {/* Scoreboard / Assigned Group Pills */}
-        <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-container-dark/90 border border-[#3e444c] rounded-2xl shadow-md mb-2">
-          {/* P1 Group Info */}
-          <div className="flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
-            <div className="text-left">
-              <span className="text-[10px] font-black uppercase text-player-1 block leading-tight">P1 {p1Group || 'Open'}</span>
-              <span className="text-xs font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Any ball'}</span>
+      {isLandscape ? (
+        <main className="flex-1 flex flex-row items-center justify-center p-2 sm:p-3 overflow-hidden min-h-0 gap-3">
+          {/* Billiards Table Canvas Container */}
+          <div className="relative flex-1 h-full max-h-[calc(100dvh-80px)] flex items-center justify-center min-w-0">
+            <div className="relative aspect-[620/340] max-h-full max-w-full w-full clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105] flex items-center justify-center">
+              <canvas
+                ref={canvasRef}
+                width={TABLE_WIDTH}
+                height={TABLE_HEIGHT}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                className="w-full h-full touch-none cursor-crosshair"
+              />
+
+              {/* Ball In Hand Helper Overlay */}
+              {isBallInHand && (
+                <div className="absolute top-2 inset-x-2 bg-emerald-600/90 text-white text-[11px] font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
+                  Ball-in-Hand: Drag cue ball
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Center 8-Ball Badge */}
-          <div className="w-7 h-7 rounded-full bg-black border border-white/20 flex items-center justify-center text-white text-xs font-black shadow-inner">
-            8
+          {/* Tactical Right Sidebar Controls in Landscape */}
+          <aside className="w-36 sm:w-44 h-full max-h-[calc(100dvh-80px)] flex flex-col justify-between p-2.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-xl shrink-0 gap-2">
+            {/* Scoreboard / Assigned Group Pills */}
+            <div className="flex flex-col gap-1.5 bg-black/30 p-2 rounded-xl border border-white/5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+                  <span className="text-[10px] font-black uppercase text-player-1">P1</span>
+                </div>
+                <span className="text-[11px] font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Any'}</span>
+              </div>
+              <div className="h-px bg-white/10" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+                  <span className="text-[10px] font-black uppercase text-player-2">P2</span>
+                </div>
+                <span className="text-[11px] font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any'}</span>
+              </div>
+            </div>
+
+            {/* Power Meter Slider */}
+            <div className="flex flex-col items-center gap-1 flex-1 justify-center py-1">
+              <div className="flex justify-between w-full text-[10px] font-black uppercase text-accent-light/80 px-1">
+                <span>Power</span>
+                <span>{power}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                value={power}
+                onChange={(e) => setPower(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+              />
+            </div>
+
+            {/* Strike Cue Button */}
+            <button
+              onClick={handleStrike}
+              disabled={isMoving || isBallInHand || winner !== null}
+              className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
+                isMoving || isBallInHand
+                  ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
+              }`}
+            >
+              Shoot!
+            </button>
+          </aside>
+        </main>
+      ) : (
+        <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
+          {/* Scoreboard / Assigned Group Pills */}
+          <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-container-dark/90 border border-[#3e444c] rounded-2xl shadow-md mb-2">
+            {/* P1 Group Info */}
+            <div className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+              <div className="text-left">
+                <span className="text-[10px] font-black uppercase text-player-1 block leading-tight">P1 {p1Group || 'Open'}</span>
+                <span className="text-xs font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Any ball'}</span>
+              </div>
+            </div>
+
+            {/* Center 8-Ball Badge */}
+            <div className="w-7 h-7 rounded-full bg-black border border-white/20 flex items-center justify-center text-white text-xs font-black shadow-inner">
+              8
+            </div>
+
+            {/* P2 Group Info */}
+            <div className="flex items-center gap-2 text-right">
+              <div className="text-right">
+                <span className="text-[10px] font-black uppercase text-player-2 block leading-tight">P2 {p2Group || 'Open'}</span>
+                <span className="text-xs font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any ball'}</span>
+              </div>
+              <span className={`w-3 h-3 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+            </div>
           </div>
 
-          {/* P2 Group Info */}
-          <div className="flex items-center gap-2 text-right">
-            <div className="text-right">
-              <span className="text-[10px] font-black uppercase text-player-2 block leading-tight">P2 {p2Group || 'Open'}</span>
-              <span className="text-xs font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any ball'}</span>
-            </div>
-            <span className={`w-3 h-3 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
-          </div>
-        </div>
-
-        {/* Billiards Table Canvas Container */}
-        <div className="relative flex items-center justify-center w-full max-w-2xl aspect-[620/340] clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105]">
-          <canvas
-            ref={canvasRef}
-            width={TABLE_WIDTH}
-            height={TABLE_HEIGHT}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            className="w-full h-full touch-none cursor-crosshair"
-          />
-
-          {/* Ball In Hand Helper Overlay */}
-          {isBallInHand && (
-            <div className="absolute top-3 inset-x-3 bg-emerald-600/90 text-white text-xs font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
-              Ball-in-Hand: Drag the cue ball anywhere on the table
-            </div>
-          )}
-        </div>
-
-        {/* Tactical Controls: Rotary Aim & Strike Bar */}
-        <div className="w-full max-w-2xl flex items-center justify-between gap-3 mt-2 px-2">
-          {/* Power Meter Slider */}
-          <div className="flex-1 flex flex-col gap-1">
-            <div className="flex justify-between text-[10px] font-black uppercase text-accent-light/80">
-              <span>Strike Power</span>
-              <span>{power}%</span>
-            </div>
-            <input
-              type="range"
-              min="10"
-              max="100"
-              value={power}
-              onChange={(e) => setPower(Number(e.target.value))}
-              className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+          {/* Billiards Table Canvas Container */}
+          <div className="relative flex items-center justify-center w-full max-w-2xl aspect-[620/340] clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105]">
+            <canvas
+              ref={canvasRef}
+              width={TABLE_WIDTH}
+              height={TABLE_HEIGHT}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className="w-full h-full touch-none cursor-crosshair"
             />
+
+            {/* Ball In Hand Helper Overlay */}
+            {isBallInHand && (
+              <div className="absolute top-3 inset-x-3 bg-emerald-600/90 text-white text-xs font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
+                Ball-in-Hand: Drag the cue ball anywhere on the table
+              </div>
+            )}
           </div>
 
-          {/* Strike Cue Button */}
-          <button
-            onClick={handleStrike}
-            disabled={isMoving || isBallInHand || winner !== null}
-            className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
-              isMoving || isBallInHand
-                ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
-            }`}
-          >
-            Shoot!
-          </button>
-        </div>
-      </main>
+          {/* Tactical Controls: Rotary Aim & Strike Bar */}
+          <div className="w-full max-w-2xl flex items-center justify-between gap-3 mt-2 px-2">
+            {/* Power Meter Slider */}
+            <div className="flex-1 flex flex-col gap-1">
+              <div className="flex justify-between text-[10px] font-black uppercase text-accent-light/80">
+                <span>Strike Power</span>
+                <span>{power}%</span>
+              </div>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                value={power}
+                onChange={(e) => setPower(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+              />
+            </div>
+
+            {/* Strike Cue Button */}
+            <button
+              onClick={handleStrike}
+              disabled={isMoving || isBallInHand || winner !== null}
+              className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
+                isMoving || isBallInHand
+                  ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
+              }`}
+            >
+              Shoot!
+            </button>
+          </div>
+        </main>
+      )}
 
       {/* Game Over Modal */}
       {winner !== null && (
@@ -891,7 +972,7 @@ export const Billiards: React.FC = () => {
           onMenu={resetToMenu}
         />
       )}
-    </div>
+    </GameContainer>
   );
 };
 export default Billiards;

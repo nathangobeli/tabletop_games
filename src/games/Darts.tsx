@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useReducer } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
+import { GameContainer } from '../components/GameContainer';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import {
@@ -819,10 +820,12 @@ export const Darts: React.FC = () => {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = BOARD_SIZE / rect.width;
-    const scaleY = BOARD_SIZE / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
+    const size = Math.min(rect.width, rect.height);
+    const scale = BOARD_SIZE / (size || 1);
+    const offsetX = (rect.width - size) / 2;
+    const offsetY = (rect.height - size) / 2;
+    const px = (e.clientX - rect.left - offsetX) * scale;
+    const py = (e.clientY - rect.top - offsetY) * scale;
 
     stateRef.current.isDragging = true;
     stateRef.current.dragPointerStart = { x: px, y: py };
@@ -837,10 +840,12 @@ export const Darts: React.FC = () => {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = BOARD_SIZE / rect.width;
-    const scaleY = BOARD_SIZE / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
+    const size = Math.min(rect.width, rect.height);
+    const scale = BOARD_SIZE / (size || 1);
+    const offsetX = (rect.width - size) / 2;
+    const offsetY = (rect.height - size) / 2;
+    const px = (e.clientX - rect.left - offsetX) * scale;
+    const py = (e.clientY - rect.top - offsetY) * scale;
 
     const dx = px - s.dragPointerStart.x;
     const dy = py - s.dragPointerStart.y;
@@ -859,7 +864,7 @@ export const Darts: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
+    <GameContainer>
       <GameHeader
         gameId="darts"
         gameName={`Darts (${state.mode === '501' ? '501 Countdown' : 'Cricket'})`}
@@ -949,9 +954,9 @@ export const Darts: React.FC = () => {
           );
         })()}
 
-        {/* Sisal Dartboard Canvas Container */}
-        <div className="flex-1 min-h-0 w-full flex items-center justify-center py-1">
-          <div className="relative aspect-square h-full max-h-full max-w-full clubhouse-board-depth table-flat rounded-full overflow-hidden shadow-2xl border-4 border-[#3e1f0c] flex items-center justify-center">
+        {/* Sisal Dartboard Canvas Container with strict 1:1 Aspect Ratio Clamping */}
+        <div className="flex-1 min-h-0 w-full flex items-center justify-center p-1">
+          <div className="relative aspect-square w-full max-w-[min(90vw,68vh)] max-h-[min(90vw,68vh)] mx-auto clubhouse-board-depth table-flat rounded-full overflow-hidden shadow-2xl border-4 sm:border-6 border-[#3e1f0c] flex items-center justify-center bg-[#1c1917]">
             <canvas
               ref={canvasRef}
               width={BOARD_SIZE * 2}
@@ -960,7 +965,7 @@ export const Darts: React.FC = () => {
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className={`w-full h-full touch-none ${
+              className={`w-full h-full aspect-square touch-none block ${
                 state.phase === 'POSITIONING' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
               }`}
             />
@@ -1076,7 +1081,7 @@ export const Darts: React.FC = () => {
           onMenu={resetToMenu}
         />
       )}
-    </div>
+    </GameContainer>
   );
 };
 

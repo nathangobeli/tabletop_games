@@ -9,6 +9,7 @@ export interface GameRule {
   howToPlay: string[];
   winningCondition: string;
   proTip: string;
+  proTips?: string[];
 }
 
 export const GAME_RULES: Record<GameId, GameRule> = {
@@ -110,6 +111,11 @@ export const GAME_RULES: Record<GameId, GameRule> = {
     ],
     winningCondition: 'The game ends when the board is full or neither player can make a legal move. The player with the most discs on the board wins.',
     proTip: 'Corners can never be flipped! Prioritize capturing the 4 corner squares and avoid placing discs adjacent to open corners.',
+    proTips: [
+      'Control the Corners: Corner squares (0,0), (0,7), (7,0), and (7,7) are permanent and cannot be flipped. Securing them anchors entire edges.',
+      'Beware C-Squares and X-Squares: Squares directly adjacent to open corners (especially diagonals) allow your opponent to immediately claim the corner on their turn.',
+      'Control the Center: In the opening and mid-game, minimize your disc count and control central territory so your opponent runs out of legal mobility.',
+    ],
   },
 
   'air-hockey': {
@@ -260,7 +266,12 @@ export const GAME_RULES: Record<GameId, GameRule> = {
       'Scoring: Strikes award 10 plus the next 2 rolls; Spares award 10 plus the next 1 roll.',
     ],
     winningCondition: 'Player with the highest total score after all 10 frames wins the match (maximum possible score: 300).',
-    proTip: 'Aim for the "pocket" between Pin 1 and Pin 3 (for right-curving hooks) to trigger maximum chain-reaction pin scatter.',
+    proTip: 'Aim for the 1–3 pocket with a 2.5° to 4.5° hook angle to generate the kinetic chain reaction needed to trip corner pins 7 and 10.',
+    proTips: [
+      'Pocket Entry Window: A strike requires a precise hit into the 1–3 pocket (right-handed, X between 14px and 22px) or 1–2 pocket (left-handed, X between -22px and -14px).',
+      'Approach Angle: Ensure your roll hits at an angle between 2.5° and 4.5°. Flat, zero-degree entries will fail to deflect pins into the stubborn 7 or 10 corner pins.',
+      'Beware the Headpin Chop: Dead-center rolls (|X| < 8px) punch straight through pins 1, 5, 8, and 9, deflecting wings outward and leaving the dreaded 7–10 split!',
+    ],
   },
 
   'mini-shogi': {
@@ -311,6 +322,11 @@ export const GAME_RULES: Record<GameId, GameRule> = {
     ],
     winningCondition: 'The first player to form an unbroken path connecting their two opposite board sides wins immediately. Draws are mathematically impossible!',
     proTip: 'Use "virtual connections" (two shared neighbor bridge cells) to guarantee links even if your opponent tries to block.',
+    proTips: [
+      'Master the "Virtual Connection" (2-bridge): two stones spaced with two mutual empty neighbors can never be severed by a single opponent move.',
+      'Control the board center early: center gems branch easily toward both of your target perimeters.',
+      'Watch border defense: intercept opponent bridge leaps when they approach within 2 rows of their target rail.',
+    ],
   },
 
   matching: {
@@ -423,7 +439,12 @@ export const GAME_RULES: Record<GameId, GameRule> = {
       'Last Card Callout: When playing down to your final card, tap "LAST CARD" before discarding! Failing to call it incurs a 2-card penalty draw.',
     ],
     winningCondition: 'First player to play their final card wins the match!',
-    proTip: 'Chain an Ace into an 8 to change the suit and finish your hand in a single explosive turn.',
+    proTip: 'Save wild 8s for late-game disruption or to switch suits when an opponent is down to their final card.',
+    proTips: [
+      'Save Wild 8s: Avoid burning your wild 8 early on. Keeping an 8 in reserve gives you a guaranteed escape hatch when an opponent tries to pin you with an off-suit card.',
+      'Stack the 2s: Never throw your only "2" blindly. Save it to counter your opponent’s "2" and pass a +4 draw penalty back across the table.',
+      'Last Card Discipline: Always tap "Call Last Card" before dropping your penultimate card—forgetting gives your opponent free card advantage.',
+    ],
   },
 
   'riichi-mahjong': {

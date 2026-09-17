@@ -2,6 +2,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { GameContainer } from '../components/GameContainer';
+import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
 
@@ -348,18 +350,33 @@ export const Backgammon: React.FC = () => {
     setGameStatus,
   ]);
 
+  const renderChecker = (pt: PointState, ci: number, isSelected: boolean) => (
+    <div
+      key={ci}
+      style={{ width: 'clamp(16px, 3vw, 26px)', height: 'clamp(16px, 3vw, 26px)' }}
+      className={`rounded-full shadow-md transition-spring flex items-center justify-center shrink-0 ${
+        pt.player === 1
+          ? 'bg-gradient-to-br from-[#dc2626] via-[#991b1b] to-[#450a0a] border border-[#fca5a5]/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.45),inset_0_-2px_4px_rgba(0,0,0,0.6)]'
+          : 'bg-gradient-to-br from-[#334155] via-[#1e293b] to-[#020617] border border-[#94a3b8]/30 shadow-[inset_0_1px_2px_rgba(255,255,255,0.3),inset_0_-2px_4px_rgba(0,0,0,0.8)]'
+      } ${isSelected ? 'ring-2 ring-yellow-400 scale-110 table-lifted' : ''}`}
+    >
+      <div className="w-[60%] h-[60%] rounded-full border border-black/25 shadow-inner" />
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-full w-full justify-between overflow-hidden relative select-none">
+    <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden relative select-none">
       <GameHeader
-        title="Backgammon"
-        subtitle="Tables & Points"
+        gameId="backgammon"
+        gameName="Backgammon"
         turn={turn}
         scoreP1={`${offP1}/15 Off`}
         scoreP2={`${offP2}/15 Off`}
         p1Label="P1 (Red)"
         p2Label="P2 (Dark)"
         onRestart={resetGame}
-        statusMessage={statusMessage}
+        statusText={`Player ${turn}'s Turn`}
+        subStatusText={statusMessage}
       />
 
       {/* Main Board Container - Responsive on iPhone, iPad, PC */}
@@ -394,13 +411,13 @@ export const Backgammon: React.FC = () => {
         </div>
 
         {/* Center: Backgammon Board Table with Baize Felt Inlay */}
-        <div className="my-auto w-full max-w-md sm:max-w-xl md:max-w-2xl aspect-[4/3] max-h-[65vh] bg-[#3a200e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#241308] flex flex-col justify-between relative overflow-hidden">
+        <div className="my-auto w-full max-w-md sm:max-w-2xl md:max-w-3xl aspect-[15/10] max-h-[min(68vh,calc(100dvh-120px))] bg-[#3a200e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#241308] flex flex-col justify-between relative overflow-hidden">
           
           {/* Inner Hardwood Inlay Perimeter Trim */}
           <div className="w-full h-full rounded-2xl sm:rounded-3xl p-1 bg-gradient-to-br from-[#1b382b] via-[#142c22] to-[#0c1d16] border-2 border-[#8c5932]/40 shadow-inner flex flex-col justify-between relative">
           
           {/* Top Row of Points (Points 12..23, viewed left to right: 12..17 | BAR | 18..23) */}
-          <div className="flex justify-between h-28 sm:h-36 md:h-44 relative">
+          <div className="flex-1 min-h-0 flex justify-between relative">
             {/* Left Quad (Points 12..17) */}
             <div className="flex-1 grid grid-cols-6 h-full">
               {[12, 13, 14, 15, 16, 17].map((idx) => {
@@ -426,23 +443,12 @@ export const Backgammon: React.FC = () => {
 
                     {/* Destination Highlight */}
                     {dest && (
-                      <div className="absolute top-8 w-4 h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
+                      <div className="absolute top-6 sm:top-8 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
                     )}
 
                     {/* Checkers Stack with Turned-Wood Shading */}
-                    <div className="z-10 flex flex-col -space-y-3.5 pt-1">
-                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => (
-                        <div
-                          key={ci}
-                          className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full shadow-md transition-spring flex items-center justify-center ${
-                            pt.player === 1
-                              ? 'bg-gradient-to-br from-[#dc2626] via-[#991b1b] to-[#450a0a] border border-[#fca5a5]/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.45),inset_0_-2px_4px_rgba(0,0,0,0.6)]'
-                              : 'bg-gradient-to-br from-[#334155] via-[#1e293b] to-[#020617] border border-[#94a3b8]/30 shadow-[inset_0_1px_2px_rgba(255,255,255,0.3),inset_0_-2px_4px_rgba(0,0,0,0.8)]'
-                          } ${isSelected ? 'ring-2 ring-yellow-400 scale-110 table-lifted' : ''}`}
-                        >
-                          <div className="w-[60%] h-[60%] rounded-full border border-black/25 shadow-inner" />
-                        </div>
-                      ))}
+                    <div className="z-10 flex flex-col -space-y-2.5 sm:-space-y-3 pt-1">
+                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => renderChecker(pt, ci, isSelected))}
                       {pt.count > 5 && (
                         <span className="text-[9px] font-black text-white bg-black/75 px-1 rounded-full text-center shadow-sm">
                           +{pt.count - 5}
@@ -507,20 +513,11 @@ export const Backgammon: React.FC = () => {
                     </svg>
 
                     {dest && (
-                      <div className="absolute top-8 w-4 h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
+                      <div className="absolute top-6 sm:top-8 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
                     )}
 
-                    <div className="z-10 flex flex-col -space-y-3.5 pt-1">
-                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => (
-                        <div
-                          key={ci}
-                          className={`w-5 h-5 rounded-full shadow-md border ${
-                            pt.player === 1
-                              ? 'bg-player-1 border-white'
-                              : 'bg-slate-900 border-slate-300'
-                          } ${isSelected ? 'ring-2 ring-yellow-400' : ''}`}
-                        />
-                      ))}
+                    <div className="z-10 flex flex-col -space-y-2.5 sm:-space-y-3 pt-1">
+                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => renderChecker(pt, ci, isSelected))}
                       {pt.count > 5 && (
                         <span className="text-[9px] font-black text-white bg-black/70 px-1 rounded-full text-center">
                           +{pt.count - 5}
@@ -534,7 +531,7 @@ export const Backgammon: React.FC = () => {
           </div>
 
           {/* Bottom Row of Points (Points 11 downto 0, viewed left to right: 11..6 | BAR | 5..0) */}
-          <div className="flex justify-between h-28 relative">
+          <div className="flex-1 min-h-0 flex justify-between relative">
             {/* Left Quad (Points 11 downto 6) */}
             <div className="flex-1 grid grid-cols-6 h-full">
               {[11, 10, 9, 8, 7, 6].map((idx) => {
@@ -558,22 +555,11 @@ export const Backgammon: React.FC = () => {
                     </svg>
 
                     {dest && (
-                      <div className="absolute bottom-8 w-4 h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
+                      <div className="absolute bottom-6 sm:bottom-8 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
                     )}
 
-                    <div className="z-10 flex flex-col-reverse -space-y-3.5 pb-1">
-                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => (
-                        <div
-                          key={ci}
-                          className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full shadow-md transition-spring flex items-center justify-center ${
-                            pt.player === 1
-                              ? 'bg-gradient-to-br from-[#dc2626] via-[#991b1b] to-[#450a0a] border border-[#fca5a5]/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.45),inset_0_-2px_4px_rgba(0,0,0,0.6)]'
-                              : 'bg-gradient-to-br from-[#334155] via-[#1e293b] to-[#020617] border border-[#94a3b8]/30 shadow-[inset_0_1px_2px_rgba(255,255,255,0.3),inset_0_-2px_4px_rgba(0,0,0,0.8)]'
-                          } ${isSelected ? 'ring-2 ring-yellow-400 scale-110 table-lifted' : ''}`}
-                        >
-                          <div className="w-[60%] h-[60%] rounded-full border border-black/25 shadow-inner" />
-                        </div>
-                      ))}
+                    <div className="z-10 flex flex-col-reverse -space-y-2.5 sm:-space-y-3 pb-1">
+                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => renderChecker(pt, ci, isSelected))}
                       {pt.count > 5 && (
                         <span className="text-[9px] font-black text-white bg-black/75 px-1 rounded-full text-center shadow-sm">
                           +{pt.count - 5}
@@ -611,22 +597,11 @@ export const Backgammon: React.FC = () => {
                     </svg>
 
                     {dest && (
-                      <div className="absolute bottom-8 w-4 h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
+                      <div className="absolute bottom-6 sm:bottom-8 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 shadow-md animate-pulse z-20" />
                     )}
 
-                    <div className="z-10 flex flex-col-reverse -space-y-3.5 pb-1">
-                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => (
-                        <div
-                          key={ci}
-                          className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full shadow-md transition-spring flex items-center justify-center ${
-                            pt.player === 1
-                              ? 'bg-gradient-to-br from-[#dc2626] via-[#991b1b] to-[#450a0a] border border-[#fca5a5]/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.45),inset_0_-2px_4px_rgba(0,0,0,0.6)]'
-                              : 'bg-gradient-to-br from-[#334155] via-[#1e293b] to-[#020617] border border-[#94a3b8]/30 shadow-[inset_0_1px_2px_rgba(255,255,255,0.3),inset_0_-2px_4px_rgba(0,0,0,0.8)]'
-                          } ${isSelected ? 'ring-2 ring-yellow-400 scale-110 table-lifted' : ''}`}
-                        >
-                          <div className="w-[60%] h-[60%] rounded-full border border-black/25 shadow-inner" />
-                        </div>
-                      ))}
+                    <div className="z-10 flex flex-col-reverse -space-y-2.5 sm:-space-y-3 pb-1">
+                      {Array.from({ length: Math.min(5, pt.count) }).map((_, ci) => renderChecker(pt, ci, isSelected))}
                       {pt.count > 5 && (
                         <span className="text-[9px] font-black text-white bg-black/75 px-1 rounded-full text-center shadow-sm">
                           +{pt.count - 5}
@@ -684,6 +659,6 @@ export const Backgammon: React.FC = () => {
           onMenu={resetToMenu}
         />
       )}
-    </div>
+    </GameContainer>
   );
 };

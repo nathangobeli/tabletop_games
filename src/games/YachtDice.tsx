@@ -4,6 +4,7 @@ import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
+import { getYachtDiceAIMove } from '../utils/gameAi';
 
 export interface Die {
   value: number; // 1-6
@@ -306,7 +307,7 @@ const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
 };
 
 export const YachtDice: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
   const [state, dispatch] = useReducer(yachtReducer, undefined, createInitialYachtState);
 
   const rollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -341,7 +342,8 @@ export const YachtDice: React.FC = () => {
   const totalsP2 = useMemo(() => computeTotals(state.scorecardP2), [state.scorecardP2]);
 
   // Roll dice action
-  const rollDice = useCallback(() => {
+  const rollDice = useCallback((isCpu = false) => {
+    if (!isCpu && gameMode === 'pve' && state.turn === 2) return;
     if (
       (state.phase !== 'INITIAL_ROLL' && state.phase !== 'DECIDING') ||
       state.rollsRemaining <= 0 ||
@@ -372,18 +374,20 @@ export const YachtDice: React.FC = () => {
         dispatch({ type: 'FINISH_ROLL', finalDice });
       }
     }, 75);
-  }, [state.phase, state.rollsRemaining, state.winner, state.dice]);
+  }, [state.phase, state.rollsRemaining, state.winner, state.dice, gameMode, state.turn]);
 
   // Toggle Die Hold
-  const toggleHold = useCallback((index: number) => {
+  const toggleHold = useCallback((index: number, isCpu = false) => {
+    if (!isCpu && gameMode === 'pve' && state.turn === 2) return;
     if (state.phase !== 'DECIDING') return;
     triggerHaptic('light');
     playTapSound();
     dispatch({ type: 'TOGGLE_DIE_HOLD', index });
-  }, [state.phase]);
+  }, [state.phase, gameMode, state.turn]);
 
   // Select Category to score
-  const selectCategory = useCallback((key: CategoryKey) => {
+  const selectCategory = useCallback((key: CategoryKey, isCpu = false) => {
+    if (!isCpu && gameMode === 'pve' && state.turn === 2) return;
     if (state.phase !== 'DECIDING') return;
 
     const currentCard = state.turn === 1 ? state.scorecardP1 : state.scorecardP2;
@@ -398,7 +402,62 @@ export const YachtDice: React.FC = () => {
     const diceValues = state.dice.map((d) => d.value);
     const scoreAwarded = calculateScore(key, diceValues);
     dispatch({ type: 'SCORE_CATEGORY', category: key, score: scoreAwarded });
-  }, [state.phase, state.turn, state.scorecardP1, state.scorecardP2, state.dice]);
+  }, [state.phase, state.turn, state.scorecardP1, state.scorecardP2, state.dice, gameMode]);
+
+  // Automated CPU Turn for Player 2 when in 'pve' mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || state.turn !== 2 || state.winner !== null) {
+      return;
+    }
+
+    if (state.phase === 'INITIAL_ROLL') {
+      setIsCpuThinking(true);
+      const timer = setTimeout(() => {
+        setIsCpuThinking(false);
+        rollDice(true);
+      }, 750);
+      return () => {
+        clearTimeout(timer);
+        setIsCpuThinking(false);
+      };
+    }
+
+    if (state.phase === 'DECIDING') {
+      setIsCpuThinking(true);
+      const timer = setTimeout(() => {
+        setIsCpuThinking(false);
+        const decision = getYachtDiceAIMove(
+          state.dice,
+          state.rollsRemaining,
+          state.scorecardP2,
+          calculateScore
+        );
+
+        if (decision.action === 'hold' && decision.heldIndices) {
+          decision.heldIndices.forEach((idx) => {
+            if (!state.dice[idx].held) {
+              dispatch({ type: 'TOGGLE_DIE_HOLD', index: idx });
+            }
+          });
+          state.dice.forEach((d, idx) => {
+            if (d.held && !decision.heldIndices!.includes(idx)) {
+              dispatch({ type: 'TOGGLE_DIE_HOLD', index: idx });
+            }
+          });
+          setTimeout(() => {
+            rollDice(true);
+          }, 450);
+        } else if (decision.action === 'score' && decision.category) {
+          selectCategory(decision.category, true);
+        }
+      }, 850);
+
+      return () => {
+        clearTimeout(timer);
+        setIsCpuThinking(false);
+      };
+    }
+  }, [gameMode, state.turn, state.phase, state.winner, state.dice, state.rollsRemaining, state.scorecardP2, rollDice, selectCategory, setIsCpuThinking]);
 
   // Reset Game
   const resetGame = useCallback(() => {

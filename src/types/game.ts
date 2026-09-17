@@ -37,6 +37,8 @@ export interface GameSettings {
   theme: TableTheme;
 }
 
+export type GameMode = 'pvp' | 'pve';
+
 export interface GameMetadata {
   id: GameId;
   name: string;
@@ -51,6 +53,10 @@ export interface GameContextValue {
   gameStatus: GameStatus;
   settings: GameSettings;
   theme: TableTheme;
+  gameMode: GameMode;
+  isCpuThinking: boolean;
+  setGameMode: (mode: GameMode) => void;
+  setIsCpuThinking: (thinking: boolean) => void;
   setTheme: (theme: TableTheme) => void;
   startGame: (gameId: GameId) => void;
   resetToMenu: () => void;
@@ -59,3 +65,4 @@ export interface GameContextValue {
   setGameStatus: (status: GameStatus) => void;
   toggleHaptics: () => void;
 }
+

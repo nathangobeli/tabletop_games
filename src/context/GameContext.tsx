@@ -16,11 +16,24 @@ const getStoredTheme = (): TableTheme => {
   return 'wood';
 };
 
+const getInitialGame = (): GameId | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const g = params.get('game') as GameId | null;
+    return g || null;
+  } catch {
+    return null;
+  }
+};
+
 export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
-  const [activeGame, setActiveGame] = useState<GameId | null>(null);
+  const [activeGame, setActiveGame] = useState<GameId | null>(getInitialGame);
   const [currentPlayer, setCurrentPlayer] = useState<PlayerNumber>(1);
   const [gameStatus, setGameStatus] = useState<GameStatus>('lobby');
   const [theme, setThemeState] = useState<TableTheme>(getStoredTheme);
+  const [gameMode, setGameModeState] = useState<GameMode>('pvp');
+  const [isCpuThinking, setIsCpuThinking] = useState<boolean>(false);
   const [settings, setSettings] = useState<GameSettings>({
     haptics: true,
     theme: getStoredTheme(),
@@ -58,7 +71,14 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     setActiveGame(null);
     setCurrentPlayer(1);
     setGameStatus('lobby');
+    setIsCpuThinking(false);
     triggerHaptic(15);
+  }, [triggerHaptic]);
+
+  const setGameMode = useCallback((mode: GameMode) => {
+    setGameModeState(mode);
+    setIsCpuThinking(false);
+    triggerHaptic(20);
   }, [triggerHaptic]);
 
   const togglePlayerTurn = useCallback(() => {
@@ -85,6 +105,10 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     gameStatus,
     settings,
     theme,
+    gameMode,
+    isCpuThinking,
+    setGameMode,
+    setIsCpuThinking,
     setTheme,
     startGame,
     resetToMenu,
@@ -98,6 +122,10 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     gameStatus,
     settings,
     theme,
+    gameMode,
+    isCpuThinking,
+    setGameMode,
+    setIsCpuThinking,
     setTheme,
     startGame,
     resetToMenu,

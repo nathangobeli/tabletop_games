@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.4] - 2026-09-17 — "Realistic Bowling Physics Overhaul, Universal VS CPU Engine, Standardized Rules Drawer & Hex Ergonomics"
+
+### Added — Realistic Bowling Strike Difficulty & Pin Physics Overhaul (`src/games/Bowling.tsx`)
+- **Exact Pocket Entry Window**:
+  - Strikes now demand precise pocket entry: $X \in [14\text{px}, 22\text{px}]$ from center for right-handed 1–3 pocket entry, or $X \in [-22\text{px}, -14\text{px}]$ for left-handed 1–2 pocket entry.
+  - Physical approach angle validation: entry velocity vectors are converted to true angular trajectory ($\theta \in [2.5^\circ, 4.5^\circ]$). Flat entries ($< 2.5^\circ$) fail to generate corner-pin deflection, leaving stubborn 7 or 10 pins standing.
+- **Dead-Center "Headpin Chop"**:
+  - Rolls hitting the headpin dead center ($|X| < 8\text{px}$) trigger a violent punch-through: pins 1, 5, 8, and 9 drop while violently deflecting 2 and 3 outward, leaving classic 7-10 or 4-7-10 splits.
+- **Roll Dispersion & Micro-Drift**:
+  - Added slight roll dispersion ($\pm 1.2\text{px}$) and natural finger drag drift on straight shots without intentional spin.
+- **Increased Pin Inertia**:
+  - Corner pins (7 and 10) require higher kinetic energy ($> 4.2$) to tumble, preventing cheap strikes on weak deflections.
+
+### Added — Universal "VS CPU" Heuristic AI Framework
+- **Session-Wide Game Mode State (`src/context/GameContext.tsx`, `src/types/game.ts`)**:
+  - Added `gameMode: 'pvp' | 'pve'` and `isCpuThinking: boolean` state to `GameContext`.
+  - Persists across game resets and matches without resetting to PvP between frames.
+- **Header Game Mode Selector & Live Pulsing Badge (`src/components/GameHeader.tsx`)**:
+  - Added "Play vs Player" and "Play vs CPU" toggle pill buttons in the header.
+  - Added glowing `🤖 CPU Thinking...` turn indicator badge that pulses whenever the heuristic engine is calculating.
+- **Integrated Heuristic AI Engines (`src/utils/gameAi.ts`)**:
+  - **Mancala**: Evaluates kalah scoring, free turn chaining (landing exactly in home store), and captures opposite pits.
+  - **Connect Four**: Minimax lookahead and tactical drop scoring synchronized with CPU thinking state.
+  - **Dots & Boxes**: Claims available boxes, chains multi-box completions, and minimizes opponent box gifts.
+  - **Renegade (Reversi)**: Positional matrix favoring corners, edge anchors, and minimizing early mobility giveaways.
+  - **Yacht Dice**: Evaluates dice keepers, calculates optimal rerolls, and scores high-probability Yahtzee categories.
+  - **President**: Discards lowest valid pairs/singles, manages power 2s, and passes strategically.
+  - **Last Card**: Defends against Draw-2 penalties, uses special action cards (+2, Skip, Again), and selects dominant suit on Wild 8s.
+  - **Hanafuda (Koi-Koi)**: Targets high-value Brights, Sake Cup, Animals, and Ribbons, with automated push-your-luck Koi-Koi vs Stop decisions.
+  - **Hex**: Heuristic connection pathfinder prioritizing center control, friendly clusters, and 2-bridge virtual connections.
+- **Human Touch Locks**:
+  - All game controls guard against human interaction during CPU turns and computation delays (600ms–900ms).
+
+### Added — Standardized "How to Play & Tips" Drawer (`src/components/RulesModal.tsx`)
+- **Frosted Glassmorphic Dark UI**:
+  - Styled with `bg-slate-900/90 backdrop-blur-md rounded-3xl border border-slate-700/50 text-slate-100 p-5 max-h-[80vh] overflow-y-auto`.
+  - Clean 3-tab navigation: **Objective**, **How to Play**, and **Pro Tips**.
+- **Pro Tips Roster**:
+  - Added high-level strategic pointers across Bowling, Renegade, Last Card, Hex, and other catalog titles.
+
+### Enhanced — Hex Board Touch Hitbox & Ergonomic Overhaul (`src/games/Hex.tsx`)
+- **Dynamic Viewport Scale Container**:
+  - Expanded cell radius to $R = 15.5\text{px}$ in a $515 \times 335$ SVG viewBox, providing maximum touch targets while maintaining tournament proportions.
+- **Voronoi Nearest-Neighbor Touch Detection**:
+  - Implemented SVG-space pointer detection mapping touch coordinates to the nearest hexagon center within $1.25 \times R$, eliminating edge misclicks.
+- **Two-Stage "Touch & Confirm" Placement**:
+  - First tap selects empty hex, rendering a glowing color-coded preview halo and ghost gem.
+  - Displays a floating confirmation pill `[✓ Confirm]` or allows immediate double-tap to place.
+- **Full VS CPU Integration**:
+  - Player 2 automatically controlled by the Hex connectivity engine in PvE mode.
+
+---
+
+## [1.8.3] - 2026-09-17 — "Landscape Viewport Adaptive Orientation & Aspect Ratio Clamping"
+
+### Added — Universal Responsive Viewport & Orientation Hook (`useOrientation`, `GameContainer`)
+- **`useOrientation` Hook (`src/hooks/useOrientation.ts`)**:
+  - Universal orientation and resize listener utilizing CSS `window.matchMedia('(orientation: landscape)')`, `resize`, and `orientationchange` events.
+  - Exposes `{ orientation, isLandscape, width, height }` with passive, unthrottled event teardown.
+- **`GameContainer` Layout Component (`src/components/GameContainer.tsx`)**:
+  - Replaced hardcoded pixel viewport assumptions with dynamic CSS aspect-ratio fitting:
+    `maxWidth: min(100vw, calc(100dvh * (16 / 9)))` (active during landscape orientation).
+  - Native safe-area insets integration for notch and Dynamic Island devices:
+    `paddingLeft: max(env(safe-area-inset-left), 8px); paddingRight: max(env(safe-area-inset-right), 8px); paddingBottom: max(env(safe-area-inset-bottom), 4px);`.
+  - In portrait mode, maintains clean edge-to-edge container fitting with zero unnecessary horizontal margins.
+- **Deep Linking Query Parameter**: Added `?game=<gameId>` URL query support in `GameContext.tsx` for immediate navigation and automated viewport testing across all 26 titles.
+
+### Fixed — Strict 1:1 Aspect Ratio & Radial Coordinate Mapping in Darts (`src/games/Darts.tsx`)
+- **Aspect-Square Viewport Clamping**:
+  - Enforced strict 1:1 square bounding container:
+    `w-full max-w-[min(90vw,68vh)] max-h-[min(90vw,68vh)] aspect-square`.
+  - Eliminates all elliptical dartboard distortion across widescreen landscape and mobile portrait displays.
+- **Uniform Polar-to-Cartesian Coordinate Calibration**:
+  - Replaced decoupled `scaleX` and `scaleY` conversions with uniform dimension scaling:
+    `size = Math.min(rect.width, rect.height)`, `scale = BOARD_SIZE / (size || 1)`.
+  - Added horizontal centering offset `offsetX = (rect.width - size) / 2` to guarantee 1:1 reticle positioning and dart hit registration regardless of CSS container flex distribution.
+
+### Enhanced — Landscape Adaptive Dual-Pane Layouts
+- **Billiards (`src/games/Billiards.tsx`)**:
+  - Widescreen landscape mode unlocks a horizontal 2-pane layout:
+    - Left table view expands horizontally with strict 620:340 aspect ratio up to available viewport height (`max-h-[calc(100dvh-80px)]`).
+    - Right-hand tactile vertical gutter panel houses group status badges, power meter slider, and a golden "SHOOT!" button right under the player's thumb.
+  - Mobile portrait preserves clean vertical stacking with zero horizontal clipping.
+- **Riichi Mahjong (`src/games/RiichiMahjong.tsx`)**:
+  - Scalable tile geometry: `<MahjongTileGraphic />` upgraded to `width: clamp(24px, 4.8vw, 42px)` with strict `3 / 4` aspect ratio and responsive font sizes (`clamp(12px, 2.5vw, 20px)`).
+  - All 14 tiles fit side-by-side along the bottom edge without horizontal scrollbars across phones, tablets, and desktops.
+  - Floating action pill bar (Draw Tile, Riichi, Pon, Tsumo, Ron) floats directly above the hand, leaving the central green river felt uncluttered.
+  - Fixed initial deal state transition to execute in `useEffect` rather than render-phase `useState`.
+- **Backgammon (`src/games/Backgammon.tsx`)**:
+  - Eliminated hardcoded `h-28` pip heights; both top and bottom board rows now use `flex-1 min-h-0` for symmetrical 50% split.
+  - Tournament-proportioned `aspect-[15/10]` board inlay with turned-wood checker rendering (`clamp(16px, 3vw, 26px)`) that scales without vertical compression or board overflow.
+- **Game Header Mobile Resilience (`src/components/GameHeader.tsx`)**:
+  - Added `min-w-0` and responsive truncation across header titles, subtitles, player cards, and turn pills.
+  - Prevents flex items from exceeding mobile viewports on screens as narrow as 320px.
+
+---
+
 ## [1.8.2] - 2026-09-16 — "Top Bar Crisp Header & Dynamic Catalog Synchronization"
 
 ### Fixed — Crisp Top Bar & iOS Notch Status Bar Bleed Resolution

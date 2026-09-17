@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -10,6 +10,7 @@ import {
   playErrorBuzz,
   triggerHaptic,
 } from '../utils/feedback';
+import { getLastCardAIMove } from '../utils/gameAi';
 
 import {
   shuffleDeck,
@@ -33,6 +34,7 @@ export interface LastCardItem {
 }
 
 export { SUIT_SYMBOLS, SUIT_NAMES };
+export const SUITS = STANDARD_SUITS as Suit[];
 
 export const CREATE_LAST_CARD_DECK = (): LastCardItem[] => {
   const baseCards = createStandardDeck({ idPrefix: 'lc' });
@@ -121,7 +123,7 @@ export const LastCardGraphic: React.FC<{
 };
 
 export const LastCard: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   const [drawPile, setDrawPile] = useState<LastCardItem[]>([]);
   const [discardPile, setDiscardPile] = useState<LastCardItem[]>([]);
@@ -238,6 +240,7 @@ export const LastCard: React.FC = () => {
 
   // Handle playing a card
   const handlePlayCard = (card: LastCardItem) => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (!isCardPlayable(card)) return;
 
     // Check "Last Card" penalty: if player had 2 cards and did NOT call Last Card!
@@ -255,80 +258,85 @@ export const LastCard: React.FC = () => {
   };
 
   // Complete card play
-  const executeCardPlay = (card: LastCardItem, chosenSuit: Suit, penaltyForgotLastCard: boolean) => {
-    playCardPlaceSound();
-    triggerHaptic('medium');
+  const executeCardPlay = useCallback(
+    (card: LastCardItem, chosenSuit: Suit, penaltyForgotLastCard: boolean) => {
+      playCardPlaceSound();
+      triggerHaptic('medium');
 
-    card.rotationJitter = (Math.random() - 0.5) * 16;
+      card.rotationJitter = (Math.random() - 0.5) * 16;
 
-    // Remove from hand
-    const nextHand = activeHand.filter((c) => c.id !== card.id);
-    if (turn === 1) setHandP1(nextHand);
-    else setHandP2(nextHand);
+      // Remove from hand
+      const currentHand = turn === 1 ? handP1 : handP2;
+      const nextHand = currentHand.filter((c) => c.id !== card.id);
+      if (turn === 1) setHandP1(nextHand);
+      else setHandP2(nextHand);
 
-    setDiscardPile((prev) => [...prev, card]);
-    setActiveSuit(chosenSuit);
+      setDiscardPile((prev) => [...prev, card]);
+      setActiveSuit(chosenSuit);
 
-    // Apply penalty if forgot Last Card
-    if (penaltyForgotLastCard) {
-      playErrorBuzz();
-      triggerHaptic('warning');
-      drawCards(2, turn);
-      setStatusMessage(`⚠️ Forgot to call "LAST CARD"! Incurred 2-card penalty!`);
-    }
+      // Apply penalty if forgot Last Card
+      if (penaltyForgotLastCard) {
+        playErrorBuzz();
+        triggerHaptic('warning');
+        drawCards(2, turn);
+        setStatusMessage(`⚠️ Forgot to call "LAST CARD"! Incurred 2-card penalty!`);
+      }
 
-    // Check victory
-    if (nextHand.length === 0) {
-      playVictorySound();
-      triggerHaptic('success');
-      setWinner(turn);
-      setStatusMessage(`Player ${turn} emptied their hand and won LAST CARD! Victory!`);
-      return;
-    }
+      // Check victory
+      if (nextHand.length === 0) {
+        playVictorySound();
+        triggerHaptic('success');
+        setWinner(turn);
+        setStatusMessage(`Player ${turn} emptied their hand and won LAST CARD! Victory!`);
+        return;
+      }
 
-    // Reset last card call
-    setLastCardCalled((prev) => ({ ...prev, [turn === 1 ? 'p1' : 'p2']: false }));
+      // Reset last card call
+      setLastCardCalled((prev) => ({ ...prev, [turn === 1 ? 'p1' : 'p2']: false }));
 
-    // Action Card Consequences
-    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
+      // Action Card Consequences
+      const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
 
-    // 1. Draw 2 (+2)
-    if (card.rank === '2') {
-      const newStack = stackedDrawCount + 2;
-      setStackedDrawCount(newStack);
+      // 1. Draw 2 (+2)
+      if (card.rank === '2') {
+        const newStack = stackedDrawCount + 2;
+        setStackedDrawCount(newStack);
+        setTurn(nextPlayer);
+        setStatusMessage(`Player ${turn} played a 2! Player ${nextPlayer} must counter with a 2 or draw ${newStack}!`);
+        return;
+      }
+
+      // 2. Ace (Play Again)
+      if (card.rank === 'A') {
+        playCaptureSound();
+        setStatusMessage(`Player ${turn} played an Ace! Extra turn!`);
+        return;
+      }
+
+      // 3. Jack (Skip Opponent)
+      if (card.rank === 'J') {
+        playCaptureSound();
+        setStatusMessage(`Player ${turn} played a Jack! Skipped opponent, play again!`);
+        return;
+      }
+
+      // 4. Wild 8
+      if (card.rank === '8') {
+        setTurn(nextPlayer);
+        setStatusMessage(`Player ${turn} played Wild 8 and chose ${SUIT_NAMES[chosenSuit]}! Player ${nextPlayer}'s turn.`);
+        return;
+      }
+
+      // Normal play
       setTurn(nextPlayer);
-      setStatusMessage(`Player ${turn} played a 2! Player ${nextPlayer} must counter with a 2 or draw ${newStack}!`);
-      return;
-    }
-
-    // 2. Ace (Play Again)
-    if (card.rank === 'A') {
-      playCaptureSound();
-      setStatusMessage(`Player ${turn} played an Ace! Extra turn!`);
-      return;
-    }
-
-    // 3. Jack (Skip Opponent)
-    if (card.rank === 'J') {
-      playCaptureSound();
-      setStatusMessage(`Player ${turn} played a Jack! Skipped opponent, play again!`);
-      return;
-    }
-
-    // 4. Wild 8
-    if (card.rank === '8') {
-      setTurn(nextPlayer);
-      setStatusMessage(`Player ${turn} played Wild 8 and chose ${SUIT_NAMES[chosenSuit]}! Player ${nextPlayer}'s turn.`);
-      return;
-    }
-
-    // Normal play
-    setTurn(nextPlayer);
-    setStatusMessage(`Player ${turn} played ${card.label} of ${SUIT_NAMES[chosenSuit]}. Player ${nextPlayer}'s turn.`);
-  };
+      setStatusMessage(`Player ${turn} played ${card.label} of ${SUIT_NAMES[chosenSuit]}. Player ${nextPlayer}'s turn.`);
+    },
+    [turn, handP1, handP2, drawCards, stackedDrawCount]
+  );
 
   // Draw Card Button Action (Voluntary draw or resolving Draw-2 penalty)
   const handleDrawButton = () => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (stackedDrawCount > 0) {
       // Must draw penalty cards
       drawCards(stackedDrawCount, turn);
@@ -360,6 +368,7 @@ export const LastCard: React.FC = () => {
 
   // Toggle "LAST CARD" Callout
   const handleToggleLastCard = () => {
+    if (gameMode === 'pve' && turn === 2) return;
     triggerHaptic('success');
     playCaptureSound();
     setLastCardCalled((prev) => {
@@ -372,6 +381,64 @@ export const LastCard: React.FC = () => {
       return { ...prev, [turn === 1 ? 'p1' : 'p2']: nextState };
     });
   };
+
+  // Non-blocking CPU AI loop for PvE mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null) return;
+    if (!topDiscard) return;
+
+    setIsCpuThinking(true);
+    const timer = setTimeout(() => {
+      setIsCpuThinking(false);
+      const decision = getLastCardAIMove(handP2, topDiscard, activeSuit, stackedDrawCount);
+
+      if (decision.action === 'draw' || !decision.cardId) {
+        if (stackedDrawCount > 0) {
+          drawCards(stackedDrawCount, 2);
+          setStatusMessage(`CPU drew ${stackedDrawCount} penalty cards!`);
+          setStackedDrawCount(0);
+          setTurn(1);
+        } else {
+          drawCards(1, 2);
+          setStatusMessage(`CPU drew a card. Player 1's turn.`);
+          setTurn(1);
+        }
+        return;
+      }
+
+      const cardToPlay = handP2.find((c) => c.id === decision.cardId);
+      if (!cardToPlay) {
+        drawCards(1, 2);
+        setStatusMessage(`CPU drew a card. Player 1's turn.`);
+        setTurn(1);
+        return;
+      }
+
+      if (decision.callLastCard) {
+        setLastCardCalled((prev) => ({ ...prev, p2: true }));
+        setStatusMessage(`📢 CPU called "LAST CARD!"`);
+      }
+
+      const chosenSuit = (decision.chosenSuit as Suit) || cardToPlay.suit;
+      executeCardPlay(cardToPlay, chosenSuit, false);
+    }, 850);
+
+    return () => {
+      clearTimeout(timer);
+      setIsCpuThinking(false);
+    };
+  }, [
+    gameMode,
+    turn,
+    winner,
+    handP2,
+    topDiscard,
+    activeSuit,
+    stackedDrawCount,
+    drawCards,
+    executeCardPlay,
+    setIsCpuThinking,
+  ]);
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">

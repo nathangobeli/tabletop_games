@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound, playGlassTinkSound } from '../utils/feedback';
+import { getMancalaAIMove } from '../utils/gameAi';
 
 // Board layout:
 // Pits 0..5: Player 1 pits (bottom row, left to right 0->5)
@@ -19,7 +20,7 @@ const INITIAL_BOARD = [
 ];
 
 export const Mancala: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   const [board, setBoard] = useState<number[]>(INITIAL_BOARD);
   const [turn, setTurn] = useState<PlayerNumber>(1);
@@ -83,8 +84,11 @@ export const Mancala: React.FC = () => {
     return false;
   }, [setGameStatus]);
 
-  const handlePitClick = useCallback((pitIndex: number) => {
+  const handlePitClick = useCallback((pitIndex: number, isCpu = false) => {
     if (winner !== null || isSowing) return;
+
+    // Prevent human clicks on CPU turn in PvE mode
+    if (!isCpu && gameMode === 'pve' && turn === 2) return;
 
     // Validate ownership
     if (turn === 1 && (pitIndex < 0 || pitIndex > 5)) return;
@@ -200,7 +204,30 @@ export const Mancala: React.FC = () => {
         }
       }, (stepIndex + 1) * stepDuration);
     });
-  }, [board, turn, winner, isSowing, checkGameOver, setGameStatus]);
+  }, [board, turn, winner, isSowing, checkGameOver, setGameStatus, gameMode]);
+
+  // Automated CPU Turn for Player 2 when in 'pve' mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null || isSowing) {
+      return;
+    }
+
+    setIsCpuThinking(true);
+    setStatusMessage('🤖 CPU is contemplating next pit...');
+
+    const timer = setTimeout(() => {
+      setIsCpuThinking(false);
+      const chosenPit = getMancalaAIMove(board, 2);
+      if (chosenPit !== -1) {
+        handlePitClick(chosenPit, true);
+      }
+    }, 850);
+
+    return () => {
+      clearTimeout(timer);
+      setIsCpuThinking(false);
+    };
+  }, [gameMode, turn, winner, isSowing, board, handlePitClick, setIsCpuThinking]);
 
   // Procedural marble rendering inside pits with large tactile 3D spheres
   const renderMarbles = (count: number, isStore = false, isDropActive = false) => {
@@ -321,7 +348,8 @@ export const Mancala: React.FC = () => {
   };
 
   const isPlayablePit = (index: number) => {
-    if (winner !== null || isSowing) return false;
+    if (winner !== null || isSowing || isCpuThinking) return false;
+    if (gameMode === 'pve' && turn === 2) return false;
     if (turn === 1 && index >= 0 && index <= 5 && board[index] > 0) return true;
     if (turn === 2 && index >= 7 && index <= 12 && board[index] > 0) return true;
     return false;

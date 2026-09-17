@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
+import { getDotsAndBoxesAIMove } from '../utils/gameAi';
 
 // 4x4 Dots grid -> 3x3 array of 9 capturable boxes
 // Horizontal edges: 4 rows of 3 segments = 12 total
@@ -14,7 +15,7 @@ type EdgeState = 0 | 1 | 2; // 0 = unselected, 1 = P1, 2 = P2
 type BoxState = 0 | 1 | 2;  // 0 = unclaimed, 1 = P1, 2 = P2
 
 export const DotsAndBoxes: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   // Horizontal edges: [row 0..3][col 0..2]
   const [hEdges, setHEdges] = useState<EdgeState[][]>(() =>
@@ -86,8 +87,9 @@ export const DotsAndBoxes: React.FC = () => {
     return { updatedBoxes: updated, claimedCount: count };
   };
 
-  const handleHorizontalClick = useCallback((r: number, c: number) => {
+  const handleHorizontalClick = useCallback((r: number, c: number, isCpu = false) => {
     if (winner !== null || hEdges[r][c] !== 0) return;
+    if (!isCpu && gameMode === 'pve' && turn === 2) return;
 
     triggerHaptic('light');
     playTapSound();
@@ -130,18 +132,21 @@ export const DotsAndBoxes: React.FC = () => {
 
     if (claimedCount > 0) {
       setLastBoxClaimed(true);
-      setStatusMessage(`Box completed! Player ${turn} gets an extra turn!`);
+      const who = turn === 1 ? 'Player 1' : gameMode === 'pve' ? '🤖 CPU' : 'Player 2';
+      setStatusMessage(`Box completed! ${who} gets an extra turn!`);
     } else {
       setLastBoxClaimed(false);
       const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
       setTurn(nextPlayer);
       setGameStatus('active');
-      setStatusMessage(`Player ${nextPlayer}'s turn.`);
+      const nextWho = nextPlayer === 1 ? "Player 1's" : gameMode === 'pve' ? "🤖 CPU's" : "Player 2's";
+      setStatusMessage(`${nextWho} turn.`);
     }
-  }, [hEdges, vEdges, boxes, turn, winner, setGameStatus]);
+  }, [hEdges, vEdges, boxes, turn, winner, setGameStatus, gameMode]);
 
-  const handleVerticalClick = useCallback((r: number, c: number) => {
+  const handleVerticalClick = useCallback((r: number, c: number, isCpu = false) => {
     if (winner !== null || vEdges[r][c] !== 0) return;
+    if (!isCpu && gameMode === 'pve' && turn === 2) return;
 
     triggerHaptic('light');
     playTapSound();
@@ -184,15 +189,44 @@ export const DotsAndBoxes: React.FC = () => {
 
     if (claimedCount > 0) {
       setLastBoxClaimed(true);
-      setStatusMessage(`Box completed! Player ${turn} gets an extra turn!`);
+      const who = turn === 1 ? 'Player 1' : gameMode === 'pve' ? '🤖 CPU' : 'Player 2';
+      setStatusMessage(`Box completed! ${who} gets an extra turn!`);
     } else {
       setLastBoxClaimed(false);
       const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
       setTurn(nextPlayer);
       setGameStatus('active');
-      setStatusMessage(`Player ${nextPlayer}'s turn.`);
+      const nextWho = nextPlayer === 1 ? "Player 1's" : gameMode === 'pve' ? "🤖 CPU's" : "Player 2's";
+      setStatusMessage(`${nextWho} turn.`);
     }
-  }, [hEdges, vEdges, boxes, turn, winner, setGameStatus]);
+  }, [hEdges, vEdges, boxes, turn, winner, setGameStatus, gameMode]);
+
+  // Automated CPU Turn for Player 2 in 'pve' mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null) {
+      return;
+    }
+
+    setIsCpuThinking(true);
+    setStatusMessage('🤖 CPU is evaluating box lines...');
+
+    const timer = setTimeout(() => {
+      setIsCpuThinking(false);
+      const move = getDotsAndBoxesAIMove(hEdges, vEdges, boxes);
+      if (move) {
+        if (move.type === 'h') {
+          handleHorizontalClick(move.r, move.c, true);
+        } else {
+          handleVerticalClick(move.r, move.c, true);
+        }
+      }
+    }, 850);
+
+    return () => {
+      clearTimeout(timer);
+      setIsCpuThinking(false);
+    };
+  }, [gameMode, turn, winner, hEdges, vEdges, boxes, handleHorizontalClick, handleVerticalClick, setIsCpuThinking]);
 
   // Coordinate math for SVG 4x4 Grid
   // Grid coordinates: 4 points across 300x300 viewBox

@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
+import { getRenegadeAIMove } from '../utils/gameAi';
 
 // 8x8 Grid
 // 0 = empty, 1 = P1 (Dark/Black), 2 = P2 (Light/White)
@@ -18,7 +19,7 @@ const DIRECTIONS = [
 ];
 
 export const Renegade: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   // Initial standard Reversi center setup:
   // [3,3]=2 (White), [3,4]=1 (Black), [4,3]=1 (Black), [4,4]=2 (White)
@@ -113,8 +114,9 @@ export const Renegade: React.FC = () => {
   }, [setGameStatus]);
 
   // Check board & moves to advance or conclude game
-  const handleCellClick = useCallback((r: number, c: number) => {
+  const handleCellClick = useCallback((r: number, c: number, isCpu = false) => {
     if (winner !== null || isAnimating) return;
+    if (!isCpu && gameMode === 'pve' && turn === 2) return;
 
     const flips = validMovesMap.get(`${r},${c}`);
     if (!flips || flips.length === 0) return;
@@ -168,13 +170,16 @@ export const Renegade: React.FC = () => {
       if (opponentHasMoves) {
         setTurn(opponent);
         setGameStatus('active');
-        setStatusMessage(`Player ${opponent}'s turn (${opponent === 1 ? 'Dark' : 'Light'}).`);
+        const nextWho = opponent === 1 ? "Player 1's" : gameMode === 'pve' ? "🤖 CPU's" : "Player 2's";
+        setStatusMessage(`${nextWho} turn (${opponent === 1 ? 'Dark' : 'Light'}).`);
         return;
       }
 
       // Case 2: Opponent has no moves, but current player has moves -> auto-pass (no swap to opponent)
       if (currentHasMoves) {
-        setStatusMessage(`Player ${opponent} has no moves! Auto-passed back to Player ${turn}.`);
+        const oppName = opponent === 2 && gameMode === 'pve' ? '🤖 CPU' : `Player ${opponent}`;
+        const currName = turn === 2 && gameMode === 'pve' ? '🤖 CPU' : `Player ${turn}`;
+        setStatusMessage(`${oppName} has no moves! Auto-passed back to ${currName}.`);
         return;
       }
 
@@ -195,14 +200,38 @@ export const Renegade: React.FC = () => {
         endMsg = `🎉 Player 1 (Dark) Wins with ${finalP1} discs!`;
       } else if (finalP2 > finalP1) {
         winResult = 2;
-        endMsg = `🎉 Player 2 (Light) Wins with ${finalP2} discs!`;
+        const winnerName = gameMode === 'pve' ? '🤖 CPU (Light)' : 'Player 2 (Light)';
+        endMsg = `🎉 ${winnerName} Wins with ${finalP2} discs!`;
       }
 
       setWinner(winResult);
       setStatusMessage(endMsg);
       setGameStatus('finished');
     }, 350);
-  }, [board, turn, winner, isAnimating, validMovesMap, getFlipsForMove, setGameStatus]);
+  }, [board, turn, winner, isAnimating, validMovesMap, getFlipsForMove, setGameStatus, gameMode]);
+
+  // Automated CPU Turn for Player 2 when in 'pve' mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null || isAnimating) {
+      return;
+    }
+
+    setIsCpuThinking(true);
+    setStatusMessage('🤖 CPU is analyzing board corners...');
+
+    const timer = setTimeout(() => {
+      setIsCpuThinking(false);
+      const move = getRenegadeAIMove(validMovesMap, board);
+      if (move) {
+        handleCellClick(move[0], move[1], true);
+      }
+    }, 850);
+
+    return () => {
+      clearTimeout(timer);
+      setIsCpuThinking(false);
+    };
+  }, [gameMode, turn, winner, isAnimating, validMovesMap, board, handleCellClick, setIsCpuThinking]);
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden">

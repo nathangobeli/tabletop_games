@@ -347,6 +347,12 @@ export const Bowling: React.FC = () => {
 
         // Check Pin Collisions when ball enters pin deck area (y > 0.8)
         if (s.ball.y >= 0.8 && !s.ball.inGutter) {
+          // Calculate physical approach angle at impact relative to straight lane vertical
+          // Lane length is 480px, so effective forward velocity in pixels is vy * 480
+          const forwardPx = Math.max(0.1, s.ball.vy * 480);
+          const approachAngleDeg = Math.abs(Math.atan2(s.ball.vx, forwardPx)) * (180 / Math.PI);
+          const hasOptimalEntryAngle = approachAngleDeg >= 2.5 && approachAngleDeg <= 4.5;
+
           for (const pin of s.pins) {
             if (pin.isKnocked) continue;
 
@@ -354,82 +360,128 @@ export const Bowling: React.FC = () => {
             const dy = (pin.y - s.ball.y) * 260; // scale y to px
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Realistic pin hitbox (dist < 15 vs previous 18)
-            if (dist < 15) {
+            // Realistic pin hitbox (dist < 14.5px)
+            if (dist < 14.5) {
               pin.isKnocked = true;
               s.pinsFallenThisRoll++;
               triggerHaptic('medium');
 
               // Headpin (Pin 1) specific dynamics
               if (pin.id === 1) {
-                const impactOffset = s.ball.x; // offset from headpin center
+                const impactOffset = s.ball.x; // offset from headpin center (x=0)
                 const absOffset = Math.abs(impactOffset);
 
-                if (absOffset < 5.0) {
-                  // DEAD-CENTER HEAD-ON PENALTY:
-                  // Direct flat impact into Pin 1 absorbs ball forward velocity abruptly.
-                  // Ball punches straight through into Pin 5, deflecting almost no momentum to wings.
-                  s.ball.vy *= 0.22;
-                  s.ball.vx *= 0.15;
+                // 1. HEADPIN CHOP: Dead-center hit (|X| < 8px)
+                if (absOffset < 8.0) {
+                  // The ball punches straight through the rack, knocking pins 1, 5, 8, and 9.
+                  // Forward momentum continues straight through center spine:
+                  s.ball.vy *= 0.65;
+                  s.ball.vx *= 0.1;
 
                   // Pin 1 shoots straight back into 5 without lateral sweep
-                  pin.vx = (impactOffset * 0.15) + (Math.random() - 0.5) * 0.3;
-                  pin.vy = 4.2;
-                  pin.vRot = (Math.random() - 0.5) * 0.15;
+                  pin.vx = (impactOffset * 0.12) + (Math.random() - 0.5) * 0.2;
+                  pin.vy = 4.8;
+                  pin.vRot = (Math.random() - 0.5) * 0.12;
 
-                  // Head-on hit directly deflects Pin 2 & 3 sharply sideways, missing 7 and 10!
-                  // This consistently leaves the notorious 7-10 or 4-7 / 6-10 splits!
+                  // Directly knock center spine pins 5, 8, 9
+                  const spinePins = [5, 8, 9];
+                  spinePins.forEach((spId) => {
+                    const sp = s.pins.find((p) => p.id === spId && !p.isKnocked);
+                    if (sp) {
+                      sp.isKnocked = true;
+                      sp.vx = (Math.random() - 0.5) * 0.6;
+                      sp.vy = 4.0 + Math.random() * 0.8;
+                      sp.vRot = (Math.random() - 0.5) * 0.2;
+                      s.pinsFallenThisRoll++;
+                    }
+                  });
+
+                  // Headpin chop violently deflects pins 2 and 3 sharply outward:
+                  // They shoot out horizontally and miss corner pins 7 and 10 completely!
                   const p2 = s.pins.find((p) => p.id === 2 && !p.isKnocked);
                   const p3 = s.pins.find((p) => p.id === 3 && !p.isKnocked);
                   if (p2) {
                     p2.isKnocked = true;
-                    p2.vx = -4.5 + (Math.random() - 0.5) * 0.5;
-                    p2.vy = 1.4;
-                    p2.vRot = -0.3;
+                    p2.vx = -6.2 + (Math.random() - 0.5) * 0.4;
+                    p2.vy = 0.8;
+                    p2.vRot = -0.4;
                     s.pinsFallenThisRoll++;
                   }
                   if (p3) {
                     p3.isKnocked = true;
-                    p3.vx = 4.5 + (Math.random() - 0.5) * 0.5;
-                    p3.vy = 1.4;
-                    p3.vRot = 0.3;
+                    p3.vx = 6.2 + (Math.random() - 0.5) * 0.4;
+                    p3.vy = 0.8;
+                    p3.vRot = 0.4;
                     s.pinsFallenThisRoll++;
                   }
-                } else if (absOffset >= 6.5 && absOffset <= 14.5) {
-                  // TRUE POCKET HIT! (1-3 pocket if x > 0, 1-2 pocket if x < 0)
-                  // High kinetic lateral transfer: Pin 1 sweeps diagonally into 2 -> 4 -> 7,
-                  // while ball drives through 3 -> 5 -> 9 -> 10 for a full STRIKE cascade!
-                  if (impactOffset > 0) {
-                    // Right pocket (1-3)
-                    pin.vx = -7.2 + (Math.random() - 0.5) * 0.8;
-                    pin.vy = 4.8;
-                    s.ball.vx += 0.9;
-                  } else {
-                    // Left pocket (1-2)
-                    pin.vx = 7.2 + (Math.random() - 0.5) * 0.8;
-                    pin.vy = 4.8;
-                    s.ball.vx -= 0.9;
+
+                  // 7-10 or 4-7-10 / 6-7-10 split guarantee:
+                  // Ensure corner pins 7 and 10 stay standing on dead-center chop!
+                  // (Optionally knock 4 or 6 depending on slight offset)
+                  if (impactOffset > 2.5) {
+                    const p4 = s.pins.find((p) => p.id === 4 && !p.isKnocked);
+                    if (p4) {
+                      p4.isKnocked = true;
+                      p4.vx = -4.2;
+                      p4.vy = 1.0;
+                      s.pinsFallenThisRoll++;
+                    }
+                  } else if (impactOffset < -2.5) {
+                    const p6 = s.pins.find((p) => p.id === 6 && !p.isKnocked);
+                    if (p6) {
+                      p6.isKnocked = true;
+                      p6.vx = 4.2;
+                      p6.vy = 1.0;
+                      s.pinsFallenThisRoll++;
+                    }
                   }
-                  pin.vRot = (Math.random() - 0.5) * 0.45;
-                } else {
-                  // Glancing headpin hit (light or high hit, leaves corner pins or washouts)
-                  pin.vx = (dx / (dist || 1)) * 5.2 + s.ball.vx * 0.35;
-                  pin.vy = 3.6;
-                  pin.vRot = (Math.random() - 0.5) * 0.3;
-                  s.ball.vy *= 0.5;
+                }
+                // 2. PRECISE POCKET ENTRY WINDOW:
+                // Right-handed 1-3 pocket: X in [14, 22] px; Left-handed 1-2 pocket: X in [-22, -14] px
+                // Requires optimal approach angle between 2.5° and 4.5°!
+                else if (
+                  ((impactOffset >= 14.0 && impactOffset <= 22.0) ||
+                   (impactOffset <= -14.0 && impactOffset >= -22.0)) &&
+                  hasOptimalEntryAngle
+                ) {
+                  // TRUE POCKET STRIKE CASCADE!
+                  // High kinetic lateral transfer: Pin 1 sweeps into 2 -> 4 -> 7,
+                  // while ball drives through 3 -> 5 -> 9 -> 10!
+                  if (impactOffset > 0) {
+                    // 1-3 Pocket (Right-handed)
+                    pin.vx = -7.8 + (Math.random() - 0.5) * 0.5;
+                    pin.vy = 4.5;
+                    s.ball.vx += 0.8;
+                  } else {
+                    // 1-2 Pocket (Left-handed)
+                    pin.vx = 7.8 + (Math.random() - 0.5) * 0.5;
+                    pin.vy = 4.5;
+                    s.ball.vx -= 0.8;
+                  }
+                  pin.vRot = (Math.random() - 0.5) * 0.5;
+                }
+                // 3. FLAT / OFF-ANGLE OR LIGHT POCKET HIT:
+                else {
+                  // Straight zero-degree roll or missed pocket angle:
+                  // Pin 1 deflects without generating full diagonal sweep.
+                  // Corners 7 and 10 will resist falling.
+                  pin.vx = (dx / (dist || 1)) * 4.6 + s.ball.vx * 0.25;
+                  pin.vy = 3.4;
+                  pin.vRot = (Math.random() - 0.5) * 0.25;
+                  s.ball.vy *= 0.55;
                 }
               } else {
                 // Direct ball collision on other pins (simulates heavy pin mass)
-                s.ball.vy *= 0.78;
-                pin.vx = (dx / (dist || 1)) * 5.8 + s.ball.vx * 0.4 + (Math.random() - 0.5) * 0.6;
-                pin.vy = 3.8;
-                pin.vRot = (Math.random() - 0.5) * 0.32;
+                s.ball.vy *= 0.82;
+                pin.vx = (dx / (dist || 1)) * 5.2 + s.ball.vx * 0.35 + (Math.random() - 0.5) * 0.4;
+                pin.vy = 3.6;
+                pin.vRot = (Math.random() - 0.5) * 0.3;
               }
             }
           }
         }
 
-        // Chain Reaction: Knocked pins hitting other standing pins
+        // Chain Reaction: Knocked pins hitting other standing pins with realistic kinetic mass
         for (const p1 of s.pins) {
           if (!p1.isKnocked) continue;
 
@@ -440,17 +492,31 @@ export const Bowling: React.FC = () => {
             const dy = (p2.y - p1.y) * 260;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Realistic pin collision radius: reduced from 21 to 15
-            if (dist < 15) {
-              // Corner pins 7 (x=-42) and 10 (x=42) require solid energy (>2.8) to tumble
+            // Realistic pin collision radius: 14.5px
+            if (dist < 14.5) {
               const isCornerPin = p2.id === 7 || p2.id === 10;
               const incomingEnergy = Math.hypot(p1.vx, p1.vy);
 
-              if (!isCornerPin || incomingEnergy > 2.8) {
+              // Calculate ball impact approach angle
+              const forwardPx = Math.max(0.1, s.ball.vy * 480);
+              const approachAngleDeg = Math.abs(Math.atan2(s.ball.vx, forwardPx)) * (180 / Math.PI);
+              const isFlatEntry = approachAngleDeg < 2.5;
+
+              // Corner pins 7 (x=-42) and 10 (x=42) require substantial kinetic energy (>4.2)
+              // AND flat/zero-degree entries fail to generate sufficient lateral deflection to trip them!
+              if (isCornerPin) {
+                if (isFlatEntry || incomingEnergy <= 4.2) {
+                  // Corner pin absorbs glance but remains standing (solid 7-pin / 10-pin tap)
+                  continue;
+                }
+              }
+
+              // Standard pin tumble threshold: requires real momentum (>1.8)
+              if (incomingEnergy > 1.8) {
                 p2.isKnocked = true;
-                p2.vx = (dx / (dist || 1)) * 4.8 + p1.vx * 0.35 + (Math.random() - 0.5) * 0.8;
-                p2.vy = 3.0 + Math.random() * 0.6;
-                p2.vRot = (Math.random() - 0.5) * 0.32;
+                p2.vx = (dx / (dist || 1)) * 4.4 + p1.vx * 0.3 + (Math.random() - 0.5) * 0.6;
+                p2.vy = 2.8 + Math.random() * 0.5;
+                p2.vRot = (Math.random() - 0.5) * 0.28;
                 s.pinsFallenThisRoll++;
               }
             }
@@ -802,13 +868,18 @@ export const Bowling: React.FC = () => {
       // Calculate true swipe angle relative to straight forward (radians)
       const swipeAngle = Math.atan2(dx, -dy);
 
-      // Micro-imperfections in hand release (subtle lateral variance so robotic dead-center strikes require touch)
-      const microDrift = (Math.random() - 0.5) * 0.0035;
+      // Roll Dispersion & Finger Angular Deviation:
+      // When rolling straight without deliberate hook (|dx| < 14), human finger release
+      // naturally imparts micro-rotational torque and variance scaling with launch velocity.
+      const isLowHook = Math.abs(dx) < 14;
+      const fingerDeviation = isLowHook
+        ? (Math.random() - 0.48) * (0.012 + speedY * 0.15)
+        : (Math.random() - 0.5) * 0.005;
 
-      // Realistic directional steering: swipe angle directly steers initial velocity
-      const ballVx = Math.sin(swipeAngle) * speedY * 55 + microDrift;
+      // Realistic directional steering: swipe angle + finger deviation directly steers ball
+      const ballVx = Math.sin(swipeAngle + fingerDeviation) * speedY * 55;
 
-      // Hook curve: derived from lateral swipe flick and spin
+      // Hook curve: derived from lateral swipe flick, oil friction profile, and spin
       const hookCurve = (dx / Math.max(25, Math.abs(dy))) * 0.055;
 
       s.ball = {

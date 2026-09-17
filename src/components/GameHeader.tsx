@@ -36,25 +36,37 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   scoreP1,
   scoreP2,
   p1Label = 'Player 1',
-  p2Label = 'Player 2',
+  p2Label,
   onRestart,
   statusMessage,
   gameId,
   onUndo,
   canUndo = false,
-  gameMode = 'pass-and-play',
+  gameMode: propGameMode,
   onToggleGameMode,
-  supportedModes,
+  supportedModes = ['pass-and-play', 'vs-cpu'],
   onOpenRemoteModal,
 }) => {
   const [showRules, setShowRules] = useState<boolean>(false);
-  const { activeGame, resetToMenu } = useGame();
+  const { activeGame, resetToMenu, gameMode: ctxGameMode, setGameMode: setCtxGameMode, isCpuThinking } = useGame();
+
+  // Mode resolution
+  const effectiveGameMode: GamePlayMode = propGameMode ?? (ctxGameMode === 'pve' ? 'vs-cpu' : 'pass-and-play');
+  const resolvedP2Label = p2Label ?? (effectiveGameMode === 'vs-cpu' ? '🤖 CPU' : 'Player 2');
+
+  const handleModeToggle = (mode: GamePlayMode) => {
+    if (onToggleGameMode) {
+      onToggleGameMode(mode);
+    } else {
+      setCtxGameMode(mode === 'vs-cpu' ? 'pve' : 'pvp');
+    }
+  };
 
   // Target gameId defaults to passed prop or context activeGame
   const targetGameId = gameId || activeGame;
   const displayTitle = title || gameName || 'Game';
   const displaySubtitle = subtitle || subStatusText;
-  const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? p1Label : p2Label;
+  const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? p1Label : resolvedP2Label;
 
   return (
     <>
@@ -85,12 +97,12 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
           </button>
 
           {/* Game Title & Subtitle */}
-          <div className="text-center flex-1 mx-2">
-            <h1 className="text-sm font-black text-container-dark tracking-tight uppercase leading-none">
+          <div className="text-center flex-1 mx-1.5 min-w-0">
+            <h1 className="text-xs sm:text-sm font-black text-container-dark tracking-tight uppercase leading-tight truncate">
               {displayTitle}
             </h1>
             {displaySubtitle && (
-              <span className="text-[10px] font-semibold text-[#7d6753] leading-none">
+              <span className="text-[9px] sm:text-[10px] font-semibold text-[#7d6753] leading-tight truncate block">
                 {displaySubtitle}
               </span>
             )}
@@ -162,8 +174,8 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
           </div>
         </div>
 
-        {/* Optional Game Mode Pill (Pass & Play vs CPU vs Remote) */}
-        {supportedModes && supportedModes.length > 1 && onToggleGameMode && (
+        {/* Game Mode Pill (2P Pass vs Vs CPU vs Remote) */}
+        {supportedModes && supportedModes.length > 1 && (
           <div className="flex items-center justify-center gap-1.5 self-center">
             <div className="flex items-center gap-1 bg-container-dark/10 p-1 rounded-xl border border-stone-300/40">
               {supportedModes.map((m) => (
@@ -172,14 +184,14 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                   onClick={() => {
                     triggerHaptic('light');
                     playTapSound();
-                    onToggleGameMode(m);
+                    handleModeToggle(m);
                     if (m === 'remote' && onOpenRemoteModal) {
                       onOpenRemoteModal();
                     }
                   }}
                   type="button"
                   className={`px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold uppercase transition-all ${
-                    gameMode === m
+                    effectiveGameMode === m
                       ? 'bg-amber-500 text-stone-900 shadow-sm scale-102'
                       : 'text-stone-600 hover:text-stone-900'
                   }`}
@@ -189,7 +201,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
               ))}
             </div>
 
-            {gameMode === 'remote' && onOpenRemoteModal && (
+            {effectiveGameMode === 'remote' && onOpenRemoteModal && (
               <button
                 onClick={() => {
                   triggerHaptic('light');
@@ -207,27 +219,27 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
         )}
 
       {/* Players status & score bar with Persistent Active Turn Pill */}
-      <div className="flex items-center justify-between gap-1.5 px-0.5">
+      <div className="flex items-center justify-between gap-1 sm:gap-1.5 px-0.5 min-w-0">
         {/* Player 1 Card */}
         <div
-          className={`flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-all duration-200 border ${
+          className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
             turn === 1 || turn === 0
               ? 'bg-player-1/15 border-player-1 shadow-sm ring-1 ring-player-1/40 scale-[1.01]'
               : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
           }`}
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0 truncate">
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
+              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                 turn === 1 ? 'bg-player-1 ring-2 ring-player-1/40 animate-pulse' : 'bg-player-1/60'
               }`}
             />
-            <span className={`text-[11px] font-bold ${turn === 1 || turn === 0 ? 'text-player-1' : 'text-container-dark/80'}`}>
+            <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 1 || turn === 0 ? 'text-player-1' : 'text-container-dark/80'}`}>
               {p1Label}
             </span>
           </div>
           {scoreP1 !== undefined && (
-            <span className="text-xs font-black text-container-dark tabular-nums bg-white/80 px-2 py-0.5 rounded-lg border border-black/5">
+            <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
               {scoreP1}
             </span>
           )}
@@ -235,46 +247,60 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 
         {/* Lightweight Persistent Turn Pill / Badge */}
         <div
-          key={turn}
-          className={`px-2.5 py-1 rounded-full border text-center transition-all duration-200 shadow-sm flex items-center gap-1.5 shrink-0 ${
+          key={`${turn}-${isCpuThinking}`}
+          className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-center transition-all duration-200 shadow-sm flex items-center gap-1 shrink-0 ${
             turn === 0
               ? 'border-amber-500/50 bg-amber-500/15 text-amber-900 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/40'
               : turn === 1
               ? 'border-player-1/60 bg-blue-500/15 text-blue-800 shadow-[0_0_10px_rgba(59,130,246,0.25)] ring-1 ring-player-1/50 animate-turn-pulse'
+              : isCpuThinking || effectiveGameMode === 'vs-cpu'
+              ? 'border-amber-500/70 bg-amber-500/20 text-amber-900 shadow-[0_0_12px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/60 animate-pulse'
               : 'border-player-2/60 bg-red-500/15 text-red-800 shadow-[0_0_10px_rgba(239,68,68,0.25)] ring-1 ring-player-2/50 animate-turn-pulse'
           }`}
           title={turn === 0 ? 'Simultaneous Real-Time Race' : `${activeLabel}'s Turn`}
         >
           <span
-            className={`w-2 h-2 rounded-full ${
-              turn === 0 ? 'bg-amber-500 ring-2 ring-amber-500/40' : turn === 1 ? 'bg-player-1' : 'bg-player-2'
+            className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${
+              turn === 0
+                ? 'bg-amber-500 ring-2 ring-amber-500/40'
+                : turn === 1
+                ? 'bg-player-1'
+                : isCpuThinking || effectiveGameMode === 'vs-cpu'
+                ? 'bg-amber-400'
+                : 'bg-player-2'
             } ring-2 ${turn === 1 ? 'ring-player-1/40' : turn === 2 ? 'ring-player-2/40' : 'ring-amber-500/40'} ${turn === 0 ? '' : 'animate-ping'}`}
           />
-          <span className="text-[10px] font-extrabold uppercase tracking-wide whitespace-nowrap">
-            {turn === 0 ? 'Simultaneous' : `${activeLabel}'s Turn`}
+          <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wide whitespace-nowrap">
+            {turn === 0
+              ? 'Simultaneous'
+              : turn === 1
+              ? "P1's Turn"
+              : isCpuThinking || effectiveGameMode === 'vs-cpu'
+              ? '🤖 CPU Thinking...'
+              : "P2's Turn"}
           </span>
         </div>
 
         {/* Player 2 Card */}
         <div
-          className={`flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-all duration-200 border ${
+          className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
             turn === 2 || turn === 0
               ? 'bg-player-2/15 border-player-2 shadow-sm ring-1 ring-player-2/40 scale-[1.01]'
               : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
           }`}
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0 truncate">
             <span
-              className={`w-2.5 h-2.5 rounded-full ${
+              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                 turn === 2 ? 'bg-player-2 ring-2 ring-player-2/40 animate-pulse' : 'bg-player-2/60'
               }`}
             />
-            <span className={`text-[11px] font-bold ${turn === 2 || turn === 0 ? 'text-player-2' : 'text-container-dark/80'}`}>
-              {p2Label}
+            <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 2 || turn === 0 ? 'text-player-2' : 'text-container-dark/80'}`}>
+              {resolvedP2Label}
             </span>
           </div>
           {scoreP2 !== undefined && (
-            <span className="text-xs font-black text-container-dark tabular-nums bg-white/80 px-2 py-0.5 rounded-lg border border-black/5">
+            <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
               {scoreP2}
             </span>
           )}

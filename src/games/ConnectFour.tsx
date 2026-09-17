@@ -23,7 +23,7 @@ interface C4Snapshot {
 }
 
 export const ConnectFour: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, setIsCpuThinking } = useGame();
 
   // Grid: 6 rows (0 is top, 5 is bottom), 7 cols
   const [grid, setGrid] = useState<CellValue[][]>(() =>
@@ -292,6 +292,7 @@ export const ConnectFour: React.FC = () => {
 
     let cancelled = false;
     setIsThinking(true);
+    setIsCpuThinking(true);
     setStatusMessage('🤖 CPU is thinking...');
 
     const timer = setTimeout(async () => {
@@ -299,16 +300,21 @@ export const ConnectFour: React.FC = () => {
         const bestCol = await requestAIMove<number>('connect-four', grid, 2, 'medium');
         if (!cancelled && bestCol !== null && bestCol !== undefined && bestCol >= 0) {
           setIsThinking(false);
+          setIsCpuThinking(false);
           executeDrop(bestCol, false);
         } else if (!cancelled) {
           // Fallback first available column
           const fallbackCol = [3, 2, 4, 1, 5, 0, 6].find((c) => grid[0][c] === 0) ?? 0;
           setIsThinking(false);
+          setIsCpuThinking(false);
           executeDrop(fallbackCol, false);
         }
       } catch (err) {
         console.error('CPU Move computation failed:', err);
-        if (!cancelled) setIsThinking(false);
+        if (!cancelled) {
+          setIsThinking(false);
+          setIsCpuThinking(false);
+        }
       }
     }, 450);
 
@@ -316,8 +322,9 @@ export const ConnectFour: React.FC = () => {
       cancelled = true;
       clearTimeout(timer);
       setIsThinking(false);
+      setIsCpuThinking(false);
     };
-  }, [gameMode, turn, winner, isAnimating, grid, executeDrop]);
+  }, [gameMode, turn, winner, isAnimating, isThinking, grid, executeDrop, setIsCpuThinking]);
 
   // WebRTC Remote Peer Listener
   useEffect(() => {

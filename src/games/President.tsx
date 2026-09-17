@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -9,6 +9,7 @@ import {
   playVictorySound,
   triggerHaptic,
 } from '../utils/feedback';
+import { getPresidentAIMove } from '../utils/gameAi';
 
 import {
   shuffleDeck,
@@ -133,7 +134,7 @@ export const PresidentCardView: React.FC<{
 };
 
 export const President: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   const [handP1, setHandP1] = useState<PlayingCard[]>([]);
   const [handP2, setHandP2] = useState<PlayingCard[]>([]);
@@ -195,6 +196,7 @@ export const President: React.FC = () => {
 
   // Toggle selection
   const handleCardClick = (cardId: string) => {
+    if (gameMode === 'pve' && turn === 2) return;
     playCardPlaceSound();
     triggerHaptic('light');
 
@@ -267,6 +269,7 @@ export const President: React.FC = () => {
 
   // Execute Play
   const handlePlay = () => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (!combinationValidation.valid) return;
 
     playCaptureSound();
@@ -326,7 +329,8 @@ export const President: React.FC = () => {
   };
 
   // Pass Turn
-  const handlePass = () => {
+  const handlePass = useCallback((isCpu = false) => {
+    if (!isCpu && gameMode === 'pve' && turn === 2) return;
     if (!currentStack) return; // Cannot pass on empty lead
 
     playCardPlaceSound();
@@ -337,20 +341,94 @@ export const President: React.FC = () => {
 
     if (nextPasses >= 1) {
       // Both passed! Clear stack and grant free lead to last player
+      const nextLead: PlayerNumber = currentStack.player;
       setCurrentStack(null);
       setConsecutivePasses(0);
-      const nextLead: PlayerNumber = currentStack.player;
       setTurn(nextLead);
       setSelectedCards([]);
-      setStatusMessage(`Both passed! Stack cleared. Player ${nextLead} has the lead.`);
+      const leadName = nextLead === 2 && gameMode === 'pve' ? '🤖 CPU' : `Player ${nextLead}`;
+      setStatusMessage(`Both passed! Stack cleared. ${leadName} has the lead.`);
       return;
     }
 
     const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
     setTurn(nextPlayer);
     setSelectedCards([]);
-    setStatusMessage(`Player ${turn} passed. Player ${nextPlayer}'s turn.`);
-  };
+    const passerName = turn === 2 && gameMode === 'pve' ? '🤖 CPU' : `Player ${turn}`;
+    const nextName = nextPlayer === 2 && gameMode === 'pve' ? '🤖 CPU' : `Player ${nextPlayer}`;
+    setStatusMessage(`${passerName} passed. ${nextName}'s turn.`);
+  }, [currentStack, consecutivePasses, turn, gameMode]);
+
+  // Automated CPU Turn for Player 2 when in 'pve' mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null) {
+      return;
+    }
+
+    setIsCpuThinking(true);
+    setStatusMessage('🤖 CPU is deciding which cards to play...');
+
+    const timer = setTimeout(() => {
+      setIsCpuThinking(false);
+      const chosenCardIds = getPresidentAIMove(handP2, currentStack, isRevolution);
+
+      if (chosenCardIds && chosenCardIds.length > 0) {
+        // Execute CPU Play
+        const chosenCards = handP2.filter((c) => chosenCardIds.includes(c.id));
+        const nonJokers = chosenCards.filter((c) => !c.isJoker);
+        const effRank = nonJokers.length > 0 ? nonJokers[0].rank : 99;
+        const playedCombo: PlayedCombination = {
+          cards: chosenCards,
+          effectiveRank: effRank,
+          count: chosenCards.length,
+          player: 2,
+        };
+
+        const remainingHand = handP2.filter((c) => !chosenCardIds.includes(c.id));
+        setHandP2(remainingHand);
+        setSelectedCards([]);
+
+        playCaptureSound();
+        triggerHaptic('medium');
+
+        if (remainingHand.length === 0) {
+          playVictorySound();
+          triggerHaptic('success');
+          setWinner(2);
+          setStatusMessage('🤖 CPU shed all cards and became the PRESIDENT! Victory!');
+          return;
+        }
+
+        if (chosenCards.length === 4) {
+          setIsRevolution((prev) => !prev);
+          setStatusMessage('⚡ REVOLUTION! Hierarchy reversed by 🤖 CPU!');
+        }
+
+        if (nonJokers.some((c) => c.rank === 8)) {
+          triggerHaptic('success');
+          setDiscardHistory((prev) => [...prev, playedCombo]);
+          setCurrentStack(null);
+          setConsecutivePasses(0);
+          setStatusMessage('💥 8-END! Stack swept. 🤖 CPU keeps the lead!');
+          return;
+        }
+
+        setDiscardHistory((prev) => [...prev, playedCombo]);
+        setCurrentStack(playedCombo);
+        setConsecutivePasses(0);
+        setTurn(1);
+        setStatusMessage("Player 1's turn.");
+      } else {
+        // CPU Passes
+        handlePass(true);
+      }
+    }, 900);
+
+    return () => {
+      clearTimeout(timer);
+      setIsCpuThinking(false);
+    };
+  }, [gameMode, turn, winner, handP2, currentStack, isRevolution, handlePass, setIsCpuThinking]);
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">

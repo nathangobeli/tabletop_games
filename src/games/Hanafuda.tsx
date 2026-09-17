@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -10,6 +10,7 @@ import {
   triggerHaptic,
 } from '../utils/feedback';
 import { shuffleDeck, dealCards } from '../utils/deck';
+import { getHanafudaAIMove } from '../utils/gameAi';
 
 export type HanafudaMonth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type CardType = 'bright' | 'animal' | 'ribbon' | 'chaff';
@@ -295,7 +296,7 @@ export const HanafudaCardView: React.FC<{
 };
 
 export const Hanafuda: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
 
   const [deck, setDeck] = useState<HanafudaCard[]>([]);
   const [handP1, setHandP1] = useState<HanafudaCard[]>([]);
@@ -433,6 +434,7 @@ export const Hanafuda: React.FC = () => {
 
   // Step 1: Play from Hand
   const handleHandCardClick = (card: HanafudaCard) => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (activeStep !== 'hand') return;
     playHanafudaSnapSound();
     triggerHaptic('light');
@@ -454,6 +456,7 @@ export const Hanafuda: React.FC = () => {
 
   // Confirm Hand Match / Discard
   const handleFieldCardClick = (fieldCard: HanafudaCard) => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (activeStep !== 'hand' || !selectedHandCard) return;
 
     // Must match month
@@ -489,6 +492,7 @@ export const Hanafuda: React.FC = () => {
 
   // Discard unmatched hand card to field
   const handleDiscardToField = () => {
+    if (gameMode === 'pve' && turn === 2) return;
     if (activeStep !== 'hand' || !selectedHandCard) return;
 
     playHanafudaSnapSound();
@@ -510,7 +514,7 @@ export const Hanafuda: React.FC = () => {
   };
 
   // Push-Your-Luck Decision
-  const handleDecision = (decision: 'stop' | 'koi') => {
+  const handleDecision = useCallback((decision: 'stop' | 'koi') => {
     triggerHaptic('success');
     if (decision === 'stop') {
       playVictorySound();
@@ -532,7 +536,95 @@ export const Hanafuda: React.FC = () => {
         completeTurn();
       }, 900);
     }
-  };
+  }, [currentYaku.total, turn, completeTurn]);
+
+  // Non-blocking CPU AI loop for PvE mode
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null) return;
+
+    if (activeStep === 'hand') {
+      setIsCpuThinking(true);
+      const timer = setTimeout(() => {
+        setIsCpuThinking(false);
+        const decision = getHanafudaAIMove(handP2, field, 'hand', p2Yaku.total);
+
+        if (decision.action === 'match' && decision.handCardId && decision.fieldCardId) {
+          const handCard = handP2.find((c) => c.id === decision.handCardId);
+          const fieldCard = field.find((f) => f.id === decision.fieldCardId);
+
+          if (handCard && fieldCard) {
+            playCaptureSound();
+            triggerHaptic('medium');
+
+            const updatedHand = handP2.filter((c) => c.id !== handCard.id);
+            const updatedField = field.filter((f) => f.id !== fieldCard.id);
+            const newCaptures = [handCard, fieldCard];
+
+            setHandP2(updatedHand);
+            setCapturedP2((prev) => [...prev, ...newCaptures]);
+            setSelectedHandCard(null);
+            setActiveStep('deck');
+            setStatusMessage(`CPU captured ${handCard.name} & ${fieldCard.name}! Drawing from deck...`);
+
+            setTimeout(() => {
+              resolveDeckDraw(deck, updatedField);
+            }, 800);
+            return;
+          }
+        }
+
+        // Discard
+        const handCard = handP2.find((c) => c.id === decision.handCardId) || handP2[0];
+        if (handCard) {
+          playHanafudaSnapSound();
+          triggerHaptic('light');
+
+          const updatedHand = handP2.filter((c) => c.id !== handCard.id);
+          const updatedField = [...field, handCard];
+
+          setHandP2(updatedHand);
+          setSelectedHandCard(null);
+          setActiveStep('deck');
+          setStatusMessage(`CPU placed ${handCard.name} on the field. Drawing from deck...`);
+
+          setTimeout(() => {
+            resolveDeckDraw(deck, updatedField);
+          }, 800);
+        }
+      }, 850);
+
+      return () => {
+        clearTimeout(timer);
+        setIsCpuThinking(false);
+      };
+    }
+
+    if (activeStep === 'koi_decision') {
+      setIsCpuThinking(true);
+      const timer = setTimeout(() => {
+        setIsCpuThinking(false);
+        const decision = getHanafudaAIMove(handP2, field, 'koi_decision', p2Yaku.total);
+        handleDecision(decision.koiDecision || 'stop');
+      }, 800);
+
+      return () => {
+        clearTimeout(timer);
+        setIsCpuThinking(false);
+      };
+    }
+  }, [
+    gameMode,
+    turn,
+    winner,
+    activeStep,
+    handP2,
+    field,
+    deck,
+    p2Yaku.total,
+    resolveDeckDraw,
+    handleDecision,
+    setIsCpuThinking,
+  ]);
 
   const matchingFieldIds = useMemo(() => {
     return new Set(getMatchingFieldCards(selectedHandCard).map((c) => c.id));

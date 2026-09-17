@@ -114,7 +114,7 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className={`relative w-screen h-screen overflow-hidden theme-${theme} flex flex-col justify-between select-none transition-colors duration-300`}>
+    <div className={`relative w-full h-full min-h-dvh h-[100dvh] overflow-hidden theme-${theme} flex flex-col justify-between select-none transition-colors duration-300`}>
       <TouchRippleOverlay />
       {/* Screen slide transition wrapper with dynamic Suspense fallback */}
       <div key={activeGame || 'menu'} className="w-full h-full animate-fade-in flex flex-col justify-between">
