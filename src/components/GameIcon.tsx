@@ -744,6 +744,116 @@ export const GameIcon: React.FC<GameIconProps> = ({ id, className = "w-full h-fu
         </svg>
       );
 
+    case 'hanafuda':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Tatami / Baize Mat */}
+          <rect x="8" y="8" width="84" height="84" rx="16" fill="#14532d" stroke="#0f3d21" strokeWidth="2.5" />
+          {/* Traditional Lacquered Card Body (Clay Edge) */}
+          <rect x="24" y="16" width="52" height="68" rx="8" fill="#991b1b" stroke="#7f1d1d" strokeWidth="1.5" />
+          {/* Card Face Cream Inlay */}
+          <rect x="27" y="19" width="46" height="62" rx="6" fill="#fffbeb" />
+          {/* Red Rising Sun */}
+          <circle cx="50" cy="38" r="14" fill="#dc2626" />
+          {/* Pine Needles */}
+          <path d="M34 68 C40 55, 48 54, 50 68" stroke="#166534" strokeWidth="3" strokeLinecap="round" />
+          <path d="M50 68 C52 52, 60 53, 66 68" stroke="#166534" strokeWidth="3" strokeLinecap="round" />
+          <path d="M42 68 C47 48, 53 48, 58 68" stroke="#14532d" strokeWidth="3.5" strokeLinecap="round" />
+          {/* Japanese Crane (Tsuru) Silhouette */}
+          <path d="M50 48 Q54 42, 57 37 Q53 41, 50 43 Q47 41, 43 37 Q46 42, 50 48 Z" fill="#ffffff" stroke="#18181b" strokeWidth="0.8" />
+          <circle cx="50" cy="36" r="1.8" fill="#b91c1c" />
+          {/* Card Gloss Sheen */}
+          <path d="M28 20 L58 20 Q32 46, 30 72 L28 72 Z" fill="#ffffff" fillOpacity="0.18" />
+        </svg>
+      );
+
+    case 'president':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Saloon Mahogany Table */}
+          <rect x="8" y="8" width="84" height="84" rx="16" fill="#451a03" stroke="#2e1002" strokeWidth="2.5" />
+          {/* Card 1 (Left - King/Ace of Spades) */}
+          <g transform="rotate(-10 38 52)">
+            <rect x="18" y="22" width="40" height="58" rx="6" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.5" />
+            <text x="23" y="36" fill="#0f172a" fontSize="12" fontWeight="900" fontFamily="sans-serif">A</text>
+            <path d="M38 48 C38 42, 34 38, 38 33 C42 38, 38 42, 38 48 Z" fill="#0f172a" />
+            <path d="M38 48 L35 55 L41 55 Z" fill="#0f172a" />
+          </g>
+          {/* Card 2 (Right - Golden Crowned Joker / "2" Card) */}
+          <g transform="rotate(8 60 52)">
+            <rect x="42" y="20" width="40" height="58" rx="6" fill="#ffffff" stroke="#f59e0b" strokeWidth="1.8" />
+            <text x="47" y="34" fill="#b45309" fontSize="12" fontWeight="900" fontFamily="sans-serif">2</text>
+            {/* Golden Crown */}
+            <path d="M52 50 L56 42 L62 48 L68 42 L72 50 Z" fill="#f59e0b" stroke="#b45309" strokeWidth="1" strokeLinejoin="round" />
+            <circle cx="56" cy="41" r="1.5" fill="#ef4444" />
+            <circle cx="62" cy="47" r="1.5" fill="#3b82f6" />
+            <circle cx="68" cy="41" r="1.5" fill="#10b981" />
+            <rect x="52" y="50" width="20" height="3" rx="1" fill="#d97706" />
+          </g>
+        </svg>
+      );
+
+    case 'last-card':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Modern Parlor Mat */}
+          <rect x="8" y="8" width="84" height="84" rx="16" fill="#1e1b4b" stroke="#0f0c36" strokeWidth="2.5" />
+          {/* Discard Card 1: Blue Draw 2 */}
+          <g transform="rotate(-12 36 50)">
+            <rect x="18" y="22" width="38" height="56" rx="6" fill="#2563eb" stroke="#ffffff" strokeWidth="1.5" />
+            <text x="23" y="36" fill="#ffffff" fontSize="11" fontWeight="900" fontFamily="sans-serif">+2</text>
+            <circle cx="37" cy="50" r="11" fill="#1d4ed8" />
+            <text x="31" y="54" fill="#ffffff" fontSize="13" fontWeight="900" fontFamily="sans-serif">+2</text>
+          </g>
+          {/* Top Card: Wild 8 with 4 Quadrant Colors */}
+          <g transform="rotate(10 60 52)">
+            <rect x="42" y="20" width="40" height="58" rx="6" fill="#09090b" stroke="#ffffff" strokeWidth="1.8" />
+            <text x="46" y="34" fill="#ffffff" fontSize="12" fontWeight="900" fontFamily="sans-serif">8</text>
+            {/* 4 Quadrant Color Wheel */}
+            <circle cx="62" cy="49" r="13" fill="#ffffff" />
+            <path d="M62 49 L62 36 A13 13 0 0 1 75 49 Z" fill="#ef4444" />
+            <path d="M62 49 L75 49 A13 13 0 0 1 62 62 Z" fill="#3b82f6" />
+            <path d="M62 49 L62 62 A13 13 0 0 1 49 49 Z" fill="#eab308" />
+            <path d="M62 49 L49 49 A13 13 0 0 1 62 36 Z" fill="#22c55e" />
+            <circle cx="62" cy="49" r="5.5" fill="#09090b" />
+            <text x="59.5" y="52.5" fill="#ffffff" fontSize="9" fontWeight="900" fontFamily="sans-serif">8</text>
+          </g>
+        </svg>
+      );
+
+    case 'riichi-mahjong':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Green Felt Mat */}
+          <rect x="8" y="8" width="84" height="84" rx="16" fill="#064e3b" stroke="#022c22" strokeWidth="2.5" />
+          {/* Mahjong Tile 1 (Bamboo Backed Ivory Tile - Red Dragon 中) */}
+          <g transform="translate(18, 16)">
+            {/* Bamboo Wood Base */}
+            <rect x="2" y="4" width="34" height="46" rx="5" fill="#78350f" />
+            {/* Ivory Resin Front */}
+            <rect x="0" y="0" width="34" height="46" rx="5" fill="#fffbeb" stroke="#d6d3d1" strokeWidth="1.2" />
+            {/* Carved Red Dragon Kanji (中 - Chun) */}
+            <rect x="8" y="14" width="18" height="18" rx="2" fill="none" stroke="#dc2626" strokeWidth="3" />
+            <line x1="17" y1="8" x2="17" y2="38" stroke="#dc2626" strokeWidth="3.2" strokeLinecap="round" />
+            {/* Specular gloss highlight */}
+            <path d="M3 3 L20 3 Q7 18, 3 32 Z" fill="#ffffff" fillOpacity="0.4" />
+          </g>
+          {/* Mahjong Tile 2 (1-Pin / Giant Dot) */}
+          <g transform="translate(48, 22)">
+            <rect x="2" y="4" width="34" height="46" rx="5" fill="#78350f" />
+            <rect x="0" y="0" width="34" height="46" rx="5" fill="#fffbeb" stroke="#d6d3d1" strokeWidth="1.2" />
+            {/* 1-Pin Sunflower Dot */}
+            <circle cx="17" cy="23" r="11" fill="#dc2626" stroke="#b91c1c" strokeWidth="1.5" />
+            <circle cx="17" cy="23" r="7" fill="#16a34a" />
+            <circle cx="17" cy="23" r="3" fill="#ffffff" />
+            <path d="M3 3 L20 3 Q7 18, 3 32 Z" fill="#ffffff" fillOpacity="0.4" />
+          </g>
+          {/* Riichi 1,000 pt Tenbo Stick */}
+          <rect x="22" y="75" width="56" height="7" rx="3.5" fill="#f8fafc" stroke="#94a3b8" strokeWidth="1" />
+          <circle cx="50" cy="78.5" r="2" fill="#ef4444" />
+        </svg>
+      );
+
     default:
       return null;
   }

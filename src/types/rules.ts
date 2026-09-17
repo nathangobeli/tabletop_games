@@ -374,5 +374,73 @@ export const GAME_RULES: Record<GameId, GameRule> = {
     winningCondition: 'Crack the code by scoring 4 Hits within 10 guesses to win!',
     proTip: 'Test distinct colors on your first two rows to quickly isolate which colors are present in the secret code.',
   },
+
+  hanafuda: {
+    gameId: 'hanafuda',
+    title: 'Hanafuda (Koi-Koi)',
+    category: 'Traditional Japanese',
+    objective: 'Capture cards by matching floral suits to form high-scoring combinations (Yaku) and decide when to cash out or call Koi-Koi.',
+    setup: '48 floral cards across 12 months. 8 cards dealt to each player, 8 to the central field, and 24 in the draw deck.',
+    howToPlay: [
+      '1. Hand Match: Play a card from hand. If its flower suit matches a card on the field, you capture both into your scoring tray. If no match, your card stays on the field.',
+      '2. Deck Draw: Flip the top card of the draw deck. If it matches a field card, capture both into your tray; otherwise, place it on the field.',
+      '3. Form Yaku: Captured cards build Yaku: Brights (Crane, Moon, Curtain, Rainman, Phoenix), Animals (Boar-Deer-Butterfly), Ribbons (Poetry & Blue), and Chaff (Kasu).',
+      '4. Push-Your-Luck: When you complete a Yaku, decide whether to STOP (claim your points and win round) or call KOI-KOI (continue to hunt for more points, risking your opponent finishing first).',
+    ],
+    winningCondition: 'If you call STOP with an active Yaku, you bank that score. If your opponent scores after your Koi-Koi, they win and you get 0 points!',
+    proTip: 'The Chrysanthemum Sake Cup is the most versatile card: it counts as an Animal AND forms the 5-point Moon-Viewing and Cherry-Viewing combinations.',
+  },
+
+  president: {
+    gameId: 'president',
+    title: 'President (Daifugo)',
+    category: 'Card Climbing Duel',
+    objective: 'Be the first player to shed all cards from your hand by playing increasingly higher card combinations.',
+    setup: 'Standard 54-card deck (including 2 Jokers). Each player receives 18 cards sorted from 3 (lowest) to 2 (highest), with Jokers as wild / highest.',
+    howToPlay: [
+      'The lead player plays any valid single, pair, triple, or 4-of-a-kind.',
+      'The opponent must play a combination of the EXACT same quantity with a higher rank, or choose to pass.',
+      'Passing does not lock you out forever; when neither player can beat the pile, the stack clears and the last player to play leads a fresh combination.',
+      '8-End (Hachi-Giri): Any play containing an 8 immediately clears the discard pile and grants you the lead!',
+      'Revolution (Kakumei): Playing a 4-of-a-kind reverses rank hierarchy for the rest of the round: 3 becomes highest, 2 becomes lowest!',
+    ],
+    winningCondition: 'The first player to empty their hand wins the round and claims the title of President!',
+    proTip: 'Save an 8 or a 2 to seize control of the board when your opponent is holding a low card count.',
+  },
+
+  'last-card': {
+    gameId: 'last-card',
+    title: 'Last Card',
+    category: 'Action Card Shedding',
+    objective: 'Shed all cards from your hand by matching the top card of the discard pile by Rank or Suit.',
+    setup: 'Each player receives 7 cards. One card is flipped face-up to begin the center discard pile.',
+    howToPlay: [
+      'On your turn, play a card that matches the active discard pile in either Suit or Rank.',
+      '2s (Draw Two): Forces opponent to draw 2 cards. If the opponent counters with another 2, the penalty stacks (+4, +6)!',
+      'Aces (Play Again): Grants the player an immediate extra turn.',
+      'Jacks (Skip): In 2-player mode, skips the opponent and returns turn to you.',
+      '8s (Wild Card): Can be played on any card; opens a picker to declare a new active suit.',
+      'Last Card Callout: When playing down to your final card, tap "LAST CARD" before discarding! Failing to call it incurs a 2-card penalty draw.',
+    ],
+    winningCondition: 'First player to play their final card wins the match!',
+    proTip: 'Chain an Ace into an 8 to change the suit and finish your hand in a single explosive turn.',
+  },
+
+  'riichi-mahjong': {
+    gameId: 'riichi-mahjong',
+    title: 'Riichi Mahjong',
+    category: 'Tile Strategy Duel',
+    objective: 'Build a winning 14-tile hand composed of 4 sets (melds) and 1 pair with at least 1 valid Yaku.',
+    setup: 'Fast 2-player Sanma set (108 tiles): Pinzu (Dots), Souzu (Bamboo), 1 & 9 Manzu terminals, Winds (East, South, West, North), and Dragons (White, Green, Red). 13 tiles dealt each.',
+    howToPlay: [
+      'Draw a tile on your turn to reach 14 tiles, evaluate melds (triplets or sequences), and discard one unwanted tile into your river (kawa).',
+      'Call Pon: Call opponent discard to complete a triplet (3 identical tiles).',
+      'Declare Riichi: When 1 tile away from winning (Tenpai) on a closed hand, tap Riichi, deposit a 1,000-pt tenbo stick, and enter auto-draw mode.',
+      'Win with Ron or Tsumo: Call Ron when opponent discards your winning tile, or call Tsumo when you draw it yourself.',
+      'Valid Yaku Required: Hand must have at least 1 Yaku (Riichi, Tanyao/All Simples, Dragons/Winds, Honitsu/Half Flush, Toitoi/All Triplets, or Seven Pairs).',
+    ],
+    winningCondition: 'First player to complete a valid Yaku hand wins the round payout (Mangan 8,000, Haneman 12,000) or bankrupts the opponent!',
+    proTip: 'Tanyao (All Simples) is the easiest and fastest hand: discard all 1s, 9s, and Honor tiles, and build entirely with numbers 2 through 8.',
+  },
 };
 

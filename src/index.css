@@ -24,7 +24,7 @@ body {
 }
 
 .pt-safe {
-  padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
+  padding-top: max(env(safe-area-inset-top), 16px);
 }
 
 /* Clubhouse Wood Table Texture Overlay - Procedural feTurbulence & Directional Ambient Vignette */

@@ -31,12 +31,7 @@ const getRankLabel = (val: number): string => {
 // Check if card A can legally be played on top of center card B (+1 or -1, with A/K wrap-around)
 const isValidSpeedPlay = (cardVal: number, targetVal: number): boolean => {
   const diff = Math.abs(cardVal - targetVal);
-  if (diff === 1) return true;
-  // Wrap-around between Ace (1) and King (13)
-  if ((cardVal === 1 && targetVal === 13) || (cardVal === 13 && targetVal === 1)) {
-    return true;
-  }
-  return false;
+  return diff === 1 || diff === 12;
 };
 
 export const Speed: React.FC = () => {
@@ -110,23 +105,6 @@ export const Speed: React.FC = () => {
     setGameStatus('active');
   }, [setGameStatus]);
 
-  // Check victory condition
-  const checkVictory = (p1Hand: Card[], p1Draw: Card[], p2Hand: Card[], p2Draw: Card[]) => {
-    if (p1Hand.length === 0 && p1Draw.length === 0) {
-      setWinner(1);
-      setStatusMessage('🎉 SPEED! Player 1 emptied their deck and wins!');
-      setGameStatus('finished');
-      return true;
-    }
-    if (p2Hand.length === 0 && p2Draw.length === 0) {
-      setWinner(2);
-      setStatusMessage('🎉 SPEED! Player 2 emptied their deck and wins!');
-      setGameStatus('finished');
-      return true;
-    }
-    return false;
-  };
-
   // Play card from hand to center pile (left or right)
   const playCardToCenter = useCallback((player: PlayerNumber, card: Card, target: 'left' | 'right') => {
     if (winner !== null) return;
@@ -167,7 +145,15 @@ export const Speed: React.FC = () => {
       const nextCenterLeft = target === 'left' ? card : prev.centerLeft;
       const nextCenterRight = target === 'right' ? card : prev.centerRight;
 
-      checkVictory(nextP1Hand, nextP1Draw, nextP2Hand, nextP2Draw);
+      if (nextP1Hand.length === 0 && nextP1Draw.length === 0) {
+        setWinner(1);
+        setStatusMessage('🎉 SPEED! Player 1 emptied their deck and wins!');
+        setGameStatus('finished');
+      } else if (nextP2Hand.length === 0 && nextP2Draw.length === 0) {
+        setWinner(2);
+        setStatusMessage('🎉 SPEED! Player 2 emptied their deck and wins!');
+        setGameStatus('finished');
+      }
 
       return {
         ...prev,
@@ -179,7 +165,7 @@ export const Speed: React.FC = () => {
         centerRight: nextCenterRight,
       };
     });
-  }, [winner]);
+  }, [winner, setGameStatus]);
 
   // Refill hand from personal draw reserve
   const refillHand = useCallback((player: PlayerNumber) => {
@@ -276,17 +262,20 @@ export const Speed: React.FC = () => {
   };
 
   // Card view helper with crisp linen cardstock texture
-  const renderCard = (card: Card, isSelected = false, onClick?: () => void) => {
+  const renderCard = (card: Card, isSelected = false, onSelect?: () => void) => {
     const isRed = card.suit === '♥' || card.suit === '♦';
 
     return (
       <button
         type="button"
-        onClick={onClick}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          onSelect?.();
+        }}
         style={{
           backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.98), rgba(248,246,240,0.94))'
         }}
-        className={`w-11 h-16 sm:w-13 sm:h-18 rounded-xl border-2 flex flex-col justify-between p-1 transition-spring duration-150 relative overflow-hidden select-none ${
+        className={`w-11 h-16 sm:w-13 sm:h-18 rounded-xl border-2 flex flex-col justify-between p-1 transition-spring duration-150 relative overflow-hidden select-none touch-none ${
           isSelected
             ? 'ring-3 ring-amber-400 -translate-y-2 table-lifted scale-105 border-amber-300 z-30'
             : 'border-stone-300 hover:border-stone-400 table-flat active:scale-95'
@@ -314,17 +303,20 @@ export const Speed: React.FC = () => {
   };
 
   // Intricate Geometric SVG Card Back renderer
-  const renderCardBack = (count: number, onClick?: () => void, disabled?: boolean, isP2 = false) => {
+  const renderCardBack = (count: number, onDraw?: () => void, disabled?: boolean, isP2 = false) => {
     return (
       <button
         type="button"
-        onClick={onClick}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          if (!disabled) onDraw?.();
+        }}
         disabled={disabled}
-        className={`w-11 h-16 sm:w-13 sm:h-18 rounded-xl border-2 border-white p-0.5 relative table-flat transition-spring duration-150 overflow-hidden ${
+        className={`w-11 h-16 sm:w-13 sm:h-18 rounded-xl border-2 border-white p-0.5 relative table-flat transition-spring duration-150 overflow-hidden select-none touch-none ${
           !disabled ? 'hover:scale-105 active:scale-95 cursor-pointer shadow-md' : 'opacity-60 cursor-not-allowed'
         }`}
       >
-        <svg viewBox="0 0 60 90" className="w-full h-full rounded-lg">
+        <svg viewBox="0 0 60 90" className="w-full h-full rounded-lg pointer-events-none">
           <rect width="60" height="90" rx="6" fill={isP2 ? '#991b1b' : '#1e40af'} />
           <rect x="3" y="3" width="54" height="84" rx="4" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeOpacity="0.8" />
           <pattern id={`backPat-${isP2 ? 'p2' : 'p1'}`} width="8" height="8" patternUnits="userSpaceOnUse">
@@ -342,12 +334,12 @@ export const Speed: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full justify-between overflow-hidden">
+    <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       {/* Top Header */}
       <GameHeader
         title="Speed"
         subtitle="Simultaneous Card Match"
-        turn={1}
+        turn={0}
         scoreP1={`${gameState.p1Hand.length + gameState.p1Draw.length} left`}
         scoreP2={`${gameState.p2Hand.length + gameState.p2Draw.length} left`}
         p1Label="P1 Cards"
@@ -357,7 +349,7 @@ export const Speed: React.FC = () => {
       />
 
       {/* Main Split-Screen Play Arena - Responsive on iPhone, iPad, PC */}
-      <main className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 overflow-hidden relative">
+      <main className="flex-1 flex flex-col items-center justify-between p-2 sm:p-4 overflow-hidden relative touch-none">
         <div className="w-full max-w-sm sm:max-w-md md:max-w-xl h-full flex flex-col justify-between gap-2">
         {/* ========================================================================= */}
         {/* PLAYER 2 TOP HALF (Rotated 180 degrees for opposite player across table)   */}
@@ -386,7 +378,7 @@ export const Speed: React.FC = () => {
                     triggerHaptic('light');
                     playTapSound();
                     setSelectedP2Card(card);
-                    setStatusMessage(`Player 2 selected ${getRankLabel(card.value)}${card.suit}. Tap left or right center card!`);
+                    setStatusMessage(`Player 2 selected ${getRankLabel(card.value)}${card.suit}. Tap Pile 1 or Pile 2!`);
                   })}
                 </div>
               ))}
@@ -395,7 +387,7 @@ export const Speed: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* CENTER SHARED ACTIVE PILES & STALL CONTROLS                               */}
+        {/* CENTER SHARED ACTIVE PILES & STALL CONTROLS (Simultaneous Multi-Touch)   */}
         {/* ========================================================================= */}
         <div className="flex items-center justify-between px-3 py-2 my-auto bg-container-dark/90 rounded-3xl border border-[#424850] shadow-2xl">
           {/* Side Reserve Count P1 */}
@@ -404,64 +396,180 @@ export const Speed: React.FC = () => {
             <span className="text-amber-400">{gameState.p1Side.length}</span>
           </div>
 
-          {/* Left Active Pile */}
-          <button
-            onClick={() => {
-              if (selectedP1Card) playCardToCenter(1, selectedP1Card, 'left');
-              else if (selectedP2Card) playCardToCenter(2, selectedP2Card, 'left');
-              else {
-                triggerHaptic('light');
-                setStatusMessage('Select a card from your hand first!');
-              }
-            }}
-            className={`flex flex-col items-center p-1 rounded-xl hover:bg-white/10 active:scale-95 transition-all ${
-              shakeTarget === 'left' ? 'animate-shake ring-2 ring-red-500 rounded-2xl' : ''
-            }`}
-            aria-label="Play onto Left Center Pile"
-          >
-            {renderCard(gameState.centerLeft)}
-            <span className="text-[9px] font-black text-accent-light/80 mt-1 uppercase">Pile 1</span>
-          </button>
-
-          {/* Central STUCK Mutual Flip Button */}
+          {/* Left Active Pile with Independent P1 and P2 Multi-Touch Zones */}
           <div className="flex flex-col items-center gap-1">
             <button
-              onClick={() => handleStuckVote(1)}
-              className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                p1StuckVote ? 'bg-player-1 text-white shadow-md' : 'bg-player-1/30 text-player-1 border border-player-1'
-              }`}
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                if (selectedP2Card) {
+                  playCardToCenter(2, selectedP2Card, 'left');
+                } else {
+                  triggerHaptic('light');
+                  setStatusMessage('P2: Tap a card from your hand first!');
+                }
+              }}
+              className="rotate-180 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-player-2/20 hover:bg-player-2/30 active:scale-95 text-player-2 border border-player-2/40 shadow-xs transition-all touch-none select-none"
             >
-              {p1StuckVote ? 'P1 STUCK ✓' : 'P1 STUCK'}
+              P2 Drop
             </button>
 
+            <div
+              className={`relative rounded-xl overflow-hidden table-flat ${
+                shakeTarget === 'left' ? 'animate-shake ring-2 ring-red-500 rounded-2xl' : ''
+              }`}
+            >
+              {renderCard(gameState.centerLeft)}
+
+              {/* Split touch zones on card face for instantaneous player taps */}
+              <div className="absolute inset-0 flex flex-col pointer-events-auto">
+                <button
+                  type="button"
+                  aria-label="P2 play onto Left Pile"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (selectedP2Card) playCardToCenter(2, selectedP2Card, 'left');
+                    else {
+                      triggerHaptic('light');
+                      setStatusMessage('P2: Tap a card from your hand first!');
+                    }
+                  }}
+                  className="w-full h-1/2 cursor-pointer hover:bg-player-2/15 active:bg-player-2/30 transition-colors touch-none"
+                />
+                <button
+                  type="button"
+                  aria-label="P1 play onto Left Pile"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (selectedP1Card) playCardToCenter(1, selectedP1Card, 'left');
+                    else {
+                      triggerHaptic('light');
+                      setStatusMessage('P1: Tap a card from your hand first!');
+                    }
+                  }}
+                  className="w-full h-1/2 cursor-pointer hover:bg-player-1/15 active:bg-player-1/30 transition-colors touch-none"
+                />
+              </div>
+            </div>
+
             <button
-              onClick={() => handleStuckVote(2)}
-              className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all rotate-180 ${
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                if (selectedP1Card) {
+                  playCardToCenter(1, selectedP1Card, 'left');
+                } else {
+                  triggerHaptic('light');
+                  setStatusMessage('P1: Tap a card from your hand first!');
+                }
+              }}
+              className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-player-1/20 hover:bg-player-1/30 active:scale-95 text-player-1 border border-player-1/40 shadow-xs transition-all touch-none select-none"
+            >
+              P1 Drop
+            </button>
+          </div>
+
+          {/* Central STUCK Mutual Flip Button */}
+          <div className="flex flex-col items-center gap-1.5 mx-1">
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handleStuckVote(2);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all rotate-180 touch-none select-none ${
                 p2StuckVote ? 'bg-player-2 text-white shadow-md' : 'bg-player-2/30 text-player-2 border border-player-2'
               }`}
             >
               {p2StuckVote ? 'P2 STUCK ✓' : 'P2 STUCK'}
             </button>
+
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handleStuckVote(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all touch-none select-none ${
+                p1StuckVote ? 'bg-player-1 text-white shadow-md' : 'bg-player-1/30 text-player-1 border border-player-1'
+              }`}
+            >
+              {p1StuckVote ? 'P1 STUCK ✓' : 'P1 STUCK'}
+            </button>
           </div>
 
-          {/* Right Active Pile */}
-          <button
-            onClick={() => {
-              if (selectedP1Card) playCardToCenter(1, selectedP1Card, 'right');
-              else if (selectedP2Card) playCardToCenter(2, selectedP2Card, 'right');
-              else {
-                triggerHaptic('light');
-                setStatusMessage('Select a card from your hand first!');
-              }
-            }}
-            className={`flex flex-col items-center p-1 rounded-xl hover:bg-white/10 active:scale-95 transition-all ${
-              shakeTarget === 'right' ? 'animate-shake ring-2 ring-red-500 rounded-2xl' : ''
-            }`}
-            aria-label="Play onto Right Center Pile"
-          >
-            {renderCard(gameState.centerRight)}
-            <span className="text-[9px] font-black text-accent-light/80 mt-1 uppercase">Pile 2</span>
-          </button>
+          {/* Right Active Pile with Independent P1 and P2 Multi-Touch Zones */}
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                if (selectedP2Card) {
+                  playCardToCenter(2, selectedP2Card, 'right');
+                } else {
+                  triggerHaptic('light');
+                  setStatusMessage('P2: Tap a card from your hand first!');
+                }
+              }}
+              className="rotate-180 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-player-2/20 hover:bg-player-2/30 active:scale-95 text-player-2 border border-player-2/40 shadow-xs transition-all touch-none select-none"
+            >
+              P2 Drop
+            </button>
+
+            <div
+              className={`relative rounded-xl overflow-hidden table-flat ${
+                shakeTarget === 'right' ? 'animate-shake ring-2 ring-red-500 rounded-2xl' : ''
+              }`}
+            >
+              {renderCard(gameState.centerRight)}
+
+              {/* Split touch zones on card face for instantaneous player taps */}
+              <div className="absolute inset-0 flex flex-col pointer-events-auto">
+                <button
+                  type="button"
+                  aria-label="P2 play onto Right Pile"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (selectedP2Card) playCardToCenter(2, selectedP2Card, 'right');
+                    else {
+                      triggerHaptic('light');
+                      setStatusMessage('P2: Tap a card from your hand first!');
+                    }
+                  }}
+                  className="w-full h-1/2 cursor-pointer hover:bg-player-2/15 active:bg-player-2/30 transition-colors touch-none"
+                />
+                <button
+                  type="button"
+                  aria-label="P1 play onto Right Pile"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (selectedP1Card) playCardToCenter(1, selectedP1Card, 'right');
+                    else {
+                      triggerHaptic('light');
+                      setStatusMessage('P1: Tap a card from your hand first!');
+                    }
+                  }}
+                  className="w-full h-1/2 cursor-pointer hover:bg-player-1/15 active:bg-player-1/30 transition-colors touch-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                if (selectedP1Card) {
+                  playCardToCenter(1, selectedP1Card, 'right');
+                } else {
+                  triggerHaptic('light');
+                  setStatusMessage('P1: Tap a card from your hand first!');
+                }
+              }}
+              className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-player-1/20 hover:bg-player-1/30 active:scale-95 text-player-1 border border-player-1/40 shadow-xs transition-all touch-none select-none"
+            >
+              P1 Drop
+            </button>
+          </div>
 
           {/* Side Reserve Count P2 */}
           <div className="text-[10px] font-bold text-accent-light/70 text-center">
@@ -484,7 +592,7 @@ export const Speed: React.FC = () => {
                     triggerHaptic('light');
                     playTapSound();
                     setSelectedP1Card(card);
-                    setStatusMessage(`Player 1 selected ${getRankLabel(card.value)}${card.suit}. Tap left or right center card!`);
+                    setStatusMessage(`Player 1 selected ${getRankLabel(card.value)}${card.suit}. Tap Pile 1 or Pile 2!`);
                   })}
                 </div>
               ))}

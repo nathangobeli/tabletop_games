@@ -221,7 +221,7 @@ export const Renegade: React.FC = () => {
       {/* Main Board Arena - Responsive on iPhone, iPad, PC */}
       <main className="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-4 md:p-6">
         {/* Felt Green Reversi Board with Wooden Rim */}
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg aspect-square bg-emerald-900 rounded-3xl sm:rounded-[36px] p-2.5 sm:p-4 md:p-5 clubhouse-board-depth border-4 sm:border-6 border-[#14532d] flex flex-col justify-between relative">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl aspect-square max-h-[72vh] bg-emerald-900 rounded-3xl sm:rounded-[36px] p-2.5 sm:p-4 md:p-5 clubhouse-board-depth border-4 sm:border-6 border-[#14532d] flex flex-col justify-between relative">
           
           {/* Subtle felt surface texture gradient */}
           <div className="absolute inset-0 rounded-[20px] sm:rounded-[28px] bg-gradient-to-tr from-black/30 via-transparent to-white/10 pointer-events-none" />

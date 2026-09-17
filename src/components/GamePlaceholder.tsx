@@ -12,7 +12,10 @@ export const GamePlaceholder: React.FC = () => {
   return (
     <div className="flex flex-col h-full w-full justify-between">
       {/* Top Game Navigation Header */}
-      <header className="pt-safe px-4 pb-3 flex items-center justify-between border-b border-[#2a2e33]/10 bg-gradient-to-b from-[#f3e9dc]/80 to-transparent backdrop-blur-sm z-10">
+      <header
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
+        className="px-4 pb-3 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50"
+      >
         <button
           onClick={resetToMenu}
           type="button"

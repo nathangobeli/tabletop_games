@@ -30,8 +30,8 @@ interface Ball {
 const TARGET_SCORE = 5;
 const GRAVITY = 0.22; // Gentle gravitational pull
 const BOUNCE_DAMPING = 0.85;
-const NET_HEIGHT = 16; // Pixels of virtual clearance required to clear net
-const NET_THICKNESS = 8; // Margin around center net Y
+const NET_HEIGHT = 10; // Pixels of virtual clearance required to clear net
+const NET_THICKNESS = 6; // Margin around center net Y
 
 export const ToyTennis: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
@@ -95,7 +95,7 @@ export const ToyTennis: React.FC = () => {
       z: 28,
       vx: (Math.random() - 0.5) * 2.2,
       vy: isP1 ? -5.2 : 5.2,
-      vz: 6.5, // High guaranteed clearance arc over net
+      vz: 7.5, // High guaranteed clearance arc over net
       radius: 8,
       bouncesInHalf: 0,
       currentHalf: isP1 ? 2 : 1,
@@ -303,7 +303,7 @@ export const ToyTennis: React.FC = () => {
       const netY = s.height / 2;
       const distToNet = Math.abs(b.y - netY);
 
-      if (distToNet <= NET_THICKNESS) {
+      if (distToNet < NET_THICKNESS) {
         if (b.z >= NET_HEIGHT) {
           // Ball cleanly clears the net!
           if (!b.clearedNetThisPass) {
@@ -352,13 +352,11 @@ export const ToyTennis: React.FC = () => {
           b.y = p1Top - b.radius;
           b.z = 2;
 
-          // Sweet Spot multiplier (centered hits produce faster, higher arcs)
           const offset = (b.x - p1.x) / (p1.width / 2);
-          const sweetSpot = 1 - Math.min(Math.abs(offset), 1) * 0.25;
 
           b.vy = -Math.max(Math.abs(b.vy) * 1.03, 5.2);
-          // Recalibrate upward launch impulse so trajectory apex easily clears the net
-          b.vz = Math.max(Math.abs(b.vy) * 0.52 * sweetSpot, 5.8);
+          // Guaranteed net clearance trajectory arc
+          b.vz = Math.max(Math.abs(b.vy) * 0.55, 7.5);
           b.vx = offset * 4.4;
 
           s.rallyCount += 1;
@@ -395,10 +393,10 @@ export const ToyTennis: React.FC = () => {
           b.z = 2;
 
           const offset = (b.x - p2.x) / (p2.width / 2);
-          const sweetSpot = 1 - Math.min(Math.abs(offset), 1) * 0.25;
 
           b.vy = Math.max(Math.abs(b.vy) * 1.03, 5.2);
-          b.vz = Math.max(Math.abs(b.vy) * 0.52 * sweetSpot, 5.8);
+          // Guaranteed net clearance trajectory arc
+          b.vz = Math.max(Math.abs(b.vy) * 0.55, 7.5);
           b.vx = offset * 4.4;
 
           s.rallyCount += 1;
@@ -630,7 +628,7 @@ export const ToyTennis: React.FC = () => {
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{ touchAction: 'none', userSelect: 'none' }}
-          className="w-full h-full max-w-xs sm:max-w-md md:max-w-lg rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-green-900 border-4 sm:border-6 border-green-950 cursor-ew-resize shadow-2xl"
+          className="w-full h-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-green-900 border-4 sm:border-6 border-green-950 cursor-ew-resize shadow-2xl"
         />
       </main>
 

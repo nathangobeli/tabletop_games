@@ -719,5 +719,103 @@ export const playPegSnapSound = (): void => {
   } catch {}
 };
 
+/**
+ * Percussive wooden snap of thick lacquered Hanafuda card on tatami/cloth
+ */
+export const playHanafudaSnapSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
 
+  try {
+    const now = ctx.currentTime;
 
+    // High transient snap click
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(1800, now);
+    osc1.frequency.exponentialRampToValueAtTime(320, now + 0.04);
+    gain1.gain.setValueAtTime(0.35, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.05);
+
+    // Resonant wooden body thud
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(380, now);
+    osc2.frequency.exponentialRampToValueAtTime(120, now + 0.06);
+    gain2.gain.setValueAtTime(0.28, now);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.07);
+  } catch {}
+};
+
+/**
+ * Resonant phenolic resin tile clack for Mahjong
+ */
+export const playTileClackSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+
+    // Dual-tone high frequency resin impact
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(2450, now);
+    osc1.frequency.exponentialRampToValueAtTime(1100, now + 0.035);
+
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(3200, now);
+    osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.025);
+
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.045);
+    osc2.stop(now + 0.045);
+  } catch {}
+};
+
+/**
+ * Tactile paper card slide/placement sound for President & Last Card
+ */
+export const playCardPlaceSound = (): void => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(540, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.045);
+
+    gain.gain.setValueAtTime(0.16, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.055);
+  } catch {}
+};

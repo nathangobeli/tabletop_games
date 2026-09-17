@@ -623,50 +623,71 @@ export const Carrom: React.FC = () => {
     };
   }, [setupBoardPieces, positionStrikerForTurn, handleShotComplete]);
 
-  // Touch handlers for baseline placement & flick impulse
-  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+  // Pointer handlers for baseline placement & flick impulse
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
     const s = stateRef.current;
     if (s.isMoving || winner !== null) return;
 
-    const touch = e.touches[0];
-    const tx = touch.clientX - rect.left;
-    const ty = touch.clientY - rect.top;
+    e.currentTarget.setPointerCapture(e.pointerId);
 
-    const distToStriker = Math.hypot(tx - s.striker.x, ty - s.striker.y);
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = s.width / rect.width;
+    const scaleY = s.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
-    if (distToStriker < s.striker.radius * 2.2) {
-      // Start flick aiming
+    const minX = 65;
+    const maxX = s.width - 65;
+    const isNearBaseline = Math.abs(y - s.baselineY) <= 35;
+    const distToStriker = Math.hypot(x - s.striker.x, y - s.striker.y);
+
+    if (isNearBaseline || distToStriker <= s.striker.radius * 2.5) {
+      if (isNearBaseline && distToStriker > s.striker.radius * 1.5) {
+        // Reposition striker along baseline
+        s.striker.x = Math.max(minX, Math.min(maxX, x));
+      }
       s.isAiming = true;
-      s.dragStart = { x: tx, y: ty };
-      s.dragCurrent = { x: tx, y: ty };
-      triggerHaptic('light');
-    } else if (Math.abs(ty - s.baselineY) < 30) {
-      // Reposition striker along baseline
-      const minX = 65;
-      const maxX = s.width - 65;
-      s.striker.x = Math.max(minX, Math.min(maxX, tx));
+      s.dragStart = { x: s.striker.x, y: s.striker.y };
+      s.dragCurrent = { x, y };
       triggerHaptic('light');
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
     const s = stateRef.current;
-    if (s.isMoving || !s.isAiming) return;
+    if (s.isMoving || !s.isAiming || !s.dragStart) return;
 
-    const touch = e.touches[0];
-    const tx = touch.clientX - rect.left;
-    const ty = touch.clientY - rect.top;
-    s.dragCurrent = { x: tx, y: ty };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = s.width / rect.width;
+    const scaleY = s.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    const minX = 65;
+    const maxX = s.width - 65;
+    const isNearBaseline = Math.abs(y - s.baselineY) <= 18;
+    const distFromStart = Math.hypot(x - s.dragStart.x, y - s.dragStart.y);
+
+    // If sliding along baseline with minimal vertical displacement, update striker placement
+    if (isNearBaseline && distFromStart < 15) {
+      s.striker.x = Math.max(minX, Math.min(maxX, x));
+      s.dragStart = { x: s.striker.x, y: s.striker.y };
+      s.dragCurrent = { x: s.striker.x, y: s.striker.y };
+    } else {
+      // Pulling backward to aim
+      s.dragCurrent = { x, y };
+    }
   };
 
-  const handleTouchEnd = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const s = stateRef.current;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
     if (!s.isAiming || !s.dragStart || !s.dragCurrent || s.isMoving) return;
 
     const pullDx = s.dragStart.x - s.dragCurrent.x;
@@ -707,15 +728,16 @@ export const Carrom: React.FC = () => {
       />
 
       {/* Main Square Board Container - Responsive on iPhone, iPad, PC */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-4 md:p-6 relative touch-none overflow-hidden">
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg aspect-square bg-[#784d1e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 shadow-2xl border-4 sm:border-6 border-[#4d2f14] flex items-center justify-center relative">
+      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 relative touch-none overflow-hidden">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl aspect-square max-h-[72vh] bg-[#784d1e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 shadow-2xl border-4 sm:border-6 border-[#4d2f14] flex items-center justify-center relative">
           <canvas
             ref={canvasRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
-            className="w-full h-full rounded-2xl sm:rounded-3xl cursor-grab active:cursor-grabbing"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            style={{ touchAction: 'none', userSelect: 'none' }}
+            className="w-full h-full rounded-2xl sm:rounded-3xl cursor-grab active:cursor-grabbing touch-none select-none"
           />
         </div>
       </main>

@@ -161,6 +161,34 @@ export const GAME_CATALOG: GameMetadata[] = [
     description: 'Deduce the secret 4-color code combination using hit and blow peg clues on a wooden console.',
     accentColor: '#9333ea',
   },
+  {
+    id: 'hanafuda',
+    name: 'Hanafuda',
+    category: 'Traditional Japanese',
+    description: 'Authentic 2-player Koi-Koi flower card matching with Brights, Ribbons, Animals, and push-your-luck calls.',
+    accentColor: '#dc2626',
+  },
+  {
+    id: 'president',
+    name: 'President',
+    category: 'Card Climbing Duel',
+    description: 'Fast-paced Daifugo duel with 8-End sweeps, 4-of-a-kind Revolutions, and wild Jokers.',
+    accentColor: '#b45309',
+  },
+  {
+    id: 'last-card',
+    name: 'Last Card',
+    category: 'Action Card Shedding',
+    description: 'Classic Crazy Eights duel with stacking Draw 2s, Aces, Wild 8s, and intense Last Card callouts.',
+    accentColor: '#e11d48',
+  },
+  {
+    id: 'riichi-mahjong',
+    name: 'Riichi Mahjong',
+    category: 'Tile Strategy Duel',
+    description: 'Dedicated 2-player Sanma format with Pinzu, Souzu, Honors, Pon/Kan/Ron calls, and Riichi tenpai bets.',
+    accentColor: '#047857',
+  },
 ];
 
 export const MainMenu: React.FC = () => {
@@ -171,7 +199,10 @@ export const MainMenu: React.FC = () => {
   return (
     <div className="flex flex-col h-full w-full justify-between">
       {/* Top Header Bar */}
-      <header className="pt-safe px-6 pb-3 flex items-center justify-between border-b border-[#2a2e33]/10 bg-gradient-to-b from-[#f3e9dc]/70 to-transparent backdrop-blur-sm z-10">
+      <header
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
+        className="px-6 pb-3 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50"
+      >
         <div>
           <h1 className="text-xl font-black text-container-dark tracking-tight uppercase flex items-center gap-2">
             <span>Tabletop Games</span>

@@ -23,6 +23,10 @@ import { Matching } from './games/Matching';
 import { NineMensMorris } from './games/NineMensMorris';
 import { HareAndHounds } from './games/HareAndHounds';
 import { HitAndBlow } from './games/HitAndBlow';
+import { Hanafuda } from './games/Hanafuda';
+import { President } from './games/President';
+import { LastCard } from './games/LastCard';
+import { RiichiMahjong } from './games/RiichiMahjong';
 import { TouchRippleOverlay } from './components/TouchRippleOverlay';
 
 const AppContent: React.FC = () => {
@@ -74,6 +78,14 @@ const AppContent: React.FC = () => {
         return <HareAndHounds />;
       case 'hit-and-blow':
         return <HitAndBlow />;
+      case 'hanafuda':
+        return <Hanafuda />;
+      case 'president':
+        return <President />;
+      case 'last-card':
+        return <LastCard />;
+      case 'riichi-mahjong':
+        return <RiichiMahjong />;
       default:
         return <MainMenu />;
     }

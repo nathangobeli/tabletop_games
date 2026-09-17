@@ -350,7 +350,7 @@ export const Checkers: React.FC = () => {
 
       {/* Main 8x8 Board Area - Responsive on iPhone, iPad, PC */}
       <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 relative touch-none overflow-hidden">
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg aspect-square bg-[#2b1407] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#1a0b03] flex items-center justify-center relative">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl aspect-square max-h-[72vh] bg-[#2b1407] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#1a0b03] flex items-center justify-center relative">
           {/* Inner Hardwood Inlay Perimeter Trim */}
           <div className="w-full h-full rounded-2xl sm:rounded-3xl p-1 bg-[#180b04] border-2 border-[#8c5932]/40 shadow-inner flex items-center justify-center">
             <div className="w-full h-full rounded-xl sm:rounded-2xl grid grid-cols-8 grid-rows-8 overflow-hidden border border-black/60 shadow-[inset_0_2px_6px_rgba(0,0,0,0.7)]">

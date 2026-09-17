@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-09-16 — "Eastern & Western Classics Expansion: Hanafuda, President, Last Card & Riichi Mahjong"
+
+### Added — Hanafuda: Koi-Koi (`src/games/Hanafuda.tsx`)
+- **Procedural Japanese Card Aesthetics**:
+  - 48 hand-crafted procedural floral cards across 12 calendar months: Pine (Matsu), Plum (Ume), Cherry Blossom (Sakura), Wisteria (Fuji), Iris (Ayame), Peony (Botan), Clover (Hagi), Pampas Grass (Susuki), Chrysanthemum (Kiku), Maple (Momiji), Willow (Yanagi), and Paulownia (Kiri).
+  - Authentic lacquered card styling with deep vermilion borders, off-white card faces, crisp seasonal illustrations, and foil accents.
+- **Authentic Koi-Koi Turn & Matching Engine**:
+  - Dual-phase turns: select a hand card to match a field card of the same month/suit (or discard to the field), followed by an automatic top deck flip and match.
+  - Captured cards drawer categorizing cards into Hikari (Brights), Tane (Animals), Tanzaku (Ribbons: Poetry, Blue, Plain), and Kasu (Chaff/Plains).
+- **Comprehensive Yaku Scoring & Push-Your-Luck**:
+  - Complete classical Yaku recognition: Goko (5 Brights, 10 pts), Shiko (4 Brights, 8 pts), Ame-Shiko (Rainy 4 Brights, 7 pts), Sanko (3 Brights, 5 pts), Inoshikacho (Boar-Deer-Butterfly, 5 pts), Akatan (Red Poetry Ribbons, 5 pts), Aotan (Blue Ribbons, 5 pts), Tanzaku (5+ Ribbons), Tane (5+ Animals), Kasu (10+ Chaff), plus seasonal specials: Tsukimi-de-Ippai (Moon Viewing, 5 pts) and Hanami-de-Ippai (Cherry Viewing, 5 pts).
+  - Push-Your-Luck Decision Bar: Prompt upon completing or upgrading a Yaku to call "KOI-KOI" (continue hunting for bigger yaku) or "STOP" (lock in score and end round).
+- **Tactile Audio**:
+  - Dual-oscillator wooden snap sound (`playHanafudaSnapSound`) synthesizing the sharp crack of heavy cards slapping the tatami mat.
+
+---
+
+### Added — President (Daifugo) (`src/games/President.tsx`)
+- **Pass-and-Play Shedding Duel**:
+  - 54-card deck (including 2 Jokers) dealt evenly (18 cards each for 2-player format) with private hand drawers and non-blocking turn indicators.
+  - Climbing hierarchy: 3 (lowest) through 2 (highest), with Jokers acting as supreme singles/wilds.
+  - Multi-card sets supported: singles, pairs, triples, and quads.
+- **Special Tactical Rules**:
+  - **8-End (Hachi-Giri)**: Playing any combination containing an 8 immediately sweeps the active trick and awards lead control to the player of the 8.
+  - **Revolution (Kakumei)**: Playing 4 cards of the same rank triggers an immediate hierarchy revolution, inverting card values (3 becomes highest, 2 becomes lowest) until swept or counter-revolution.
+  - Pass tracking and lead sweeps: Passing clears the board once the opposing player cannot or chooses not to beat the trick.
+- **Visuals & Audio**:
+  - Premium saloon-style emerald felt table, dynamic trick stack with angular card scattering, and smooth paper card slide acoustics (`playCardPlaceSound`).
+
+---
+
+### Added — Last Card (Crazy Eights / Uno Rules) (`src/games/LastCard.tsx`)
+- **Fast-Paced Action Shedding**:
+  - Standard 52-card deck dealt 7 cards each. Top card forms the discard pile.
+  - Core match mechanics: Match by suit or rank against the top of the discard pile.
+- **Action & Power Cards**:
+  - **Draw Two (+2)**: Opponent must draw 2 cards or stack another +2 (escalating penalties: +4, +6, etc.).
+  - **Aces (Play Again)**: Grants an immediate additional play.
+  - **Jacks (Skip)**: Skips the opponent's turn.
+  - **Wild 8s**: Playable on any turn regardless of active suit/rank; triggers an interactive 4-suit selector (Hearts, Diamonds, Clubs, Spades) to dictate play.
+- **"Last Card" Declaration Penalty**:
+  - Dedicated tactile "LAST CARD" button. Players must declare "Last Card" before or when dropping to their final card. Failing to call triggers a 2-card draw penalty.
+- **Dynamic Presentation**:
+  - Animated discard pile with realistic card angle jitter, live draw pile counter, and card snap acoustics.
+
+---
+
+### Added — Riichi Mahjong (2-Player Sanma / Nima Format) (`src/games/RiichiMahjong.tsx`)
+- **108-Tile 2-Player Sanma Ruleset**:
+  - Fast-paced 1v1 duel excluding 2–8 Manzu (leaving 1 & 9 Manzu terminals, 1–9 Pinzu, 1–9 Souzu, 4 Winds, and 3 Dragons).
+  - Clean 13-tile sorted hand with separated 14th draw tile.
+  - 6-tile row discard river (*kawa*) with rotated horizontal tile indicator when calling Riichi.
+  - Live Dora indicator flipped from the 14-tile Dead Wall (*rinshan* / *wanpai*).
+- **Live Calls & Riichi Mechanics**:
+  - Floating action prompts: Pon (triplet call), Kan (quad call), Ron (win on opponent's discard), and Tsumo (self-draw win).
+  - Riichi Declaration: 1,000-point Tenbo stick wager on closed Tenpai hand, locking hand into automatic draw-and-discard loop.
+- **Yaku Detection & Scoring Engine**:
+  - Automatic classical Yaku evaluation: Riichi, Menzen Tsumo, Tanyao (All Simples), Yakuhai (Dragons, Seat Wind, Round Wind), Pinfu, Honitsu (Half Flush), Chinitsu (Full Flush), Chiitoitsu (Seven Pairs), and Toitoi (All Triplets).
+  - Han and Fu score calculation with Mangan (8,000+ pts), Haneman (12,000+ pts), and Baiman (16,000+ pts) payments, starting from 25,000 points each.
+- **Tactile Audio**:
+  - Dual-frequency 2450Hz/3200Hz resin clack audio (`playTileClackSound`) faithfully replicating the crisp click of dense urea resin tiles.
+
+---
+
+### Enhanced — Global Architecture & Audio Utilities
+- **Synthesized Audio Library (`src/utils/feedback.ts`)**:
+  - Added `playHanafudaSnapSound`, `playTileClackSound`, and `playCardPlaceSound`.
+- **Game Registry & Rules (`src/types/game.ts`, `src/types/rules.ts`, `src/components/GameIcon.tsx`, `src/components/MainMenu.tsx`)**:
+  - Expanded `GameId` type and game rules with strategy guides and pro-tips.
+  - Added 4 custom procedural SVG icons and categorized catalog entries with tailored accent badges.
+
+---
+
+## [1.6.4] - 2026-09-16 — "Responsive Play Area Scaling & Darts 501 Checkout Overhaul"
+
+### Enhanced & Optimized — Responsive Viewport Scaling (`src/games/Darts.tsx`, `Carrom.tsx`, `AirHockey.tsx`, `ToyTennis.tsx`, `Checkers.tsx`, `Renegade.tsx`, `Gomoku.tsx`, `DotsAndBoxes.tsx`, `ConnectFour.tsx`)
+- **Full Viewport Space Utilization**:
+  - Eliminated legacy mobile constraints (`max-w-xs` = 320px) that artificially throttled playing boards on modern mobile viewports (375px–430px wide), unlocking 20–25% larger interactive play areas.
+  - Implemented flexible `flex-1 min-h-0` auto-fitting containers with `aspect-square h-full max-h-full max-w-full` ensuring boards dynamically expand to 100% of available screen real estate without clipping, vertical overflow, or distortion.
+  - Maintained crisp aspect ratios across phone portrait, landscape, iPad/tablets, and desktop screens.
+  - Added 2x HiDPI resolution rendering in `Darts.tsx` with `devicePixelRatio` scaling, eliminating bitmap blur when expanded on high-resolution Retina displays.
+
+### Fixed & Enhanced — Darts 501 Checkout & Scoring (`src/games/Darts.tsx`)
+- **Clear Bust Explanations**:
+  - Clarified standard Double Out regulation rules directly in the status feedback when hitting singles at 0 remainder (e.g. hitting S8 when needing 8).
+  - Explicitly informs players of required Double targets (`D4` for 8) or invites toggling to "Open Out" mode.
+- **Dynamic Real-Time Checkout Helper**:
+  - Added a dedicated checkout guidance banner displaying real-time checkout advice (`Target: D4 (Double 4) to win`) whenever players enter checkout range ($\le 40$ or 50).
+- **Tactile Haptic Corrections**:
+  - Switched Bust haptics from victory rumble to a distinctive warning buzz.
+
+---
+
+## [1.6.3] - 2026-09-16 — "Mobile Polish: PWA Notch Bleed Fix, Simultaneous Speed, Tennis Clearance & Carrom Input"
+
+### Fixed & Enhanced — PWA Standalone Styling (`index.html`, `src/index.css`, `src/components/MainMenu.tsx`, `src/components/GameHeader.tsx`)
+- **Notch Bleed & Header Blur Resolution**:
+  - Removed all `backdrop-blur-*` CSS blur filters and semi-transparent gradients from fixed headers that caused graphical artifacts under the system status bar and device notch.
+  - Replaced with crisp, fully opaque surfaces (`bg-[#f3e9dc] border-b border-[#2a2e33]/15 shadow-sm z-50`).
+  - Added explicit safe-area top padding: `padding-top: max(env(safe-area-inset-top), 16px);` across the `.pt-safe` utility and fixed navigation headers.
+  - Ensured PWA standalone meta tags in `index.html`: `apple-mobile-web-app-capable`, `black-translucent` status bar style, and `viewport-fit=cover`.
+
+### Changed & Overhauled — Speed (`src/games/Speed.tsx`)
+- **True Simultaneous 2-Player Real-Time Race**:
+  - Completely decoupled from sequential turn-based guards.
+  - Updated `GameHeader` to display a simultaneous race indicator (`turn={0}`) without turn preference.
+  - Provided independent Player 1 and Player 2 drop zones and split touch targets on both center active piles (Pile 1 and Pile 2), eliminating race-condition blocking where Player 1's selection prevented Player 2 from playing.
+  - Multi-touch handling: Switched card interactions, pile targets, and STUCK buttons to `onPointerDown` with `touch-action: none` and `user-select: none`, allowing concurrent simultaneous taps on mobile touchscreens.
+  - Move validation: Strictly enforced rank differential against the target center stack (`Math.abs(cardVal - targetVal) === 1 || Math.abs(cardVal - targetVal) === 12` for Ace/King wrap-around).
+
+### Fixed & Tuned — Toy Tennis (`src/games/ToyTennis.tsx`)
+- **Guaranteed Net Clearance Apex Arc**:
+  - On every paddle hit, enforced upward launch velocity: `b.vz = Math.max(Math.abs(b.vy) * 0.55, 7.5);` guaranteeing the ball's parabolic trajectory apex easily sails over the net on baseline returns.
+  - Calibrated serve launch impulse with `vz = 7.5`.
+- **Forgiving Net Collision Box**:
+  - Lowered `NET_HEIGHT` from 16 down to 10.
+  - Tightened horizontal net collision boundary to `distToNet < 6` (`Math.abs(ball.y - netY) < 6`), eliminating clipping on normal baseline returns while faithfully detecting low-skimming net faults.
+  - Maintained ground shadow pinning to `(ball.x, ball.y)` with elevated rendering at `(ball.x, ball.y - ball.z)`.
+
+### Fixed & Restored — Carrom (`src/games/Carrom.tsx`)
+- **Generous Baseline Striker Hitbox & Fluid Flick Engine**:
+  - Replaced touch events with Pointer Events (`onPointerDown`, `onPointerMove`, `onPointerUp`) with pointer capture.
+  - Applied `touch-action: none;` and `user-select: none;` on the canvas element, completely preventing browser gesture cancellation, pinch-to-zoom, and scrolling.
+  - Normalized touch coordinates against bounding client rect and logical canvas dimensions:
+    `const x = (e.clientX - rect.left) * (s.width / rect.width);`
+    `const y = (e.clientY - rect.top) * (s.height / rect.height);`
+  - Generous Hitbox: Allowed touching anywhere inside the wide horizontal baseline band (`Math.abs(y - baselineY) <= 35`) to smoothly position the Striker horizontally along the line.
+  - Dragging backward from the positioned striker draws the aim vector and power gauge; releasing the pointer applies the impulse force shot.
+
+---
+
 ## [1.6.2] - 2026-09-16 — "Bowling: Lane Oil & Pocket Precision Physics; Darts: Two-Stage Precision Aiming Loop"
 
 ### Changed & Overhauled — Bowling (`src/games/Bowling.tsx`)

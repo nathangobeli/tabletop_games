@@ -214,7 +214,7 @@ export const DotsAndBoxes: React.FC = () => {
 
       {/* Main Interactive Grid Viewport - Responsive on iPhone, iPad, PC */}
       <main className="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-4 md:p-6">
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg aspect-square bg-accent-light rounded-3xl sm:rounded-[36px] p-3 sm:p-5 clubhouse-board-depth border-4 sm:border-6 border-[#d8c3a5] flex items-center justify-center relative">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl aspect-square max-h-[72vh] bg-accent-light rounded-3xl sm:rounded-[36px] p-3 sm:p-5 clubhouse-board-depth border-4 sm:border-6 border-[#d8c3a5] flex items-center justify-center relative">
           
           <svg viewBox="0 0 300 300" className="w-full h-full select-none">
             {/* Background grid paper styling */}

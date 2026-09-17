@@ -209,7 +209,7 @@ export const ConnectFour: React.FC = () => {
       {/* Main Connect Four Vertical Rack */}
       <main className="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-4 md:p-6">
         {/* Active Player Turn Banner Indicator */}
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg mb-2 flex items-center justify-center">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg mb-2 flex items-center justify-center">
           <div
             className={`flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-md transition-all duration-300 ${
               turn === 1
@@ -229,7 +229,7 @@ export const ConnectFour: React.FC = () => {
         </div>
 
         {/* Column Drop Indicator Buttons */}
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-lg grid grid-cols-7 gap-1.5 sm:gap-2 px-3 mb-1.5">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg grid grid-cols-7 gap-1.5 sm:gap-2 px-3 mb-1.5">
           {Array.from({ length: COLS }).map((_, col) => {
             const isColFull = grid[0][col] !== 0;
             const isDisabled = winner !== null || isColFull || isAnimating;
@@ -268,7 +268,7 @@ export const ConnectFour: React.FC = () => {
           style={{
             backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent 18px, rgba(255,255,255,0.07) 19px, rgba(0,0,0,0.18) 20px)'
           }}
-          className="w-full max-w-xs sm:max-w-md md:max-w-lg bg-gradient-to-b from-[#1d4ed8] via-[#2563eb] to-[#1e40af] rounded-3xl sm:rounded-[36px] p-3 sm:p-5 clubhouse-board-depth table-flat border-t-2 border-white/20 border-b-4 border-black/40 border-x-2 border-blue-800 relative"
+          className="w-full max-w-sm sm:max-w-md md:max-w-lg bg-gradient-to-b from-[#1d4ed8] via-[#2563eb] to-[#1e40af] rounded-3xl sm:rounded-[36px] p-3 sm:p-5 clubhouse-board-depth table-flat border-t-2 border-white/20 border-b-4 border-black/40 border-x-2 border-blue-800 relative"
         >
           {/* Beveled Plastic Frame Top Highlight */}
           <div className="absolute inset-x-4 top-1 h-1.5 rounded-t-2xl bg-gradient-to-r from-white/10 via-white/30 to-white/10 pointer-events-none" />

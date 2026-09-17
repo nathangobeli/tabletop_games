@@ -165,7 +165,7 @@ export const Gomoku: React.FC = () => {
 
       {/* Main Bamboo Board Area - Responsive on iPhone, iPad, PC */}
       <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 relative touch-none overflow-hidden">
-        <div className="w-full max-w-xs sm:max-w-md md:max-w-xl aspect-square bg-[#c48d4c] rounded-3xl sm:rounded-[40px] p-2.5 sm:p-4 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#783e18] flex items-center justify-center relative">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-xl aspect-square max-h-[72vh] bg-[#c48d4c] rounded-3xl sm:rounded-[40px] p-2.5 sm:p-4 clubhouse-board-depth table-flat border-4 sm:border-6 border-[#783e18] flex items-center justify-center relative">
           {/* Authentic Honey Bamboo Surface with Grain & Bevel */}
           <div 
             style={{ 

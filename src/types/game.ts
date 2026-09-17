@@ -20,7 +20,11 @@ export type GameId =
   | 'matching'
   | 'nine-mens-morris'
   | 'hare-and-hounds'
-  | 'hit-and-blow';
+  | 'hit-and-blow'
+  | 'hanafuda'
+  | 'president'
+  | 'last-card'
+  | 'riichi-mahjong';
 
 export type PlayerNumber = 1 | 2;
 

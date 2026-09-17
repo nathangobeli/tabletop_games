@@ -36,6 +36,22 @@ const R_TRIPLE_OUTER = 104;
 const R_DOUBLE_INNER = 146;
 const R_DOUBLE_OUTER = 162;
 
+export const getCheckoutGuide = (score: number, isDoubleOut: boolean): string | null => {
+  if (score <= 0) return null;
+  if (!isDoubleOut) {
+    if (score <= 20) return `Target: S${score} to win`;
+    if (score <= 40 && score % 2 === 0) return `Target: S${score} or D${score / 2} to win`;
+    if (score === 50) return 'Target: Bullseye (50) to win';
+    return null;
+  }
+  // Double Out
+  if (score === 50) return 'Target: Double Bull (50) to win';
+  if (score <= 40 && score % 2 === 0) return `Target: D${score / 2} (Double ${score / 2}) to win`;
+  if (score === 1) return 'Warning: 1 pt remaining is a Bust!';
+  if (score <= 41 && score % 2 !== 0) return `Setup: S1 leaves D${(score - 1) / 2}`;
+  return null;
+};
+
 export const Darts: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -187,13 +203,18 @@ export const Darts: React.FC = () => {
       const rem = currentScore - dart.score;
 
       let isBust = false;
+      let bustExplanation = '';
       if (rem < 0) {
         isBust = true;
+        bustExplanation = `Overshot score (${rem} remaining).`;
       } else if (rem === 1 && doubleOut) {
         isBust = true;
+        bustExplanation = `Cannot leave 1 remaining in Double Out (no double equals 1).`;
       } else if (rem === 0) {
         if (doubleOut && dart.multiplier < 2) {
           isBust = true;
+          const targetDouble = currentScore === 50 ? 'Bullseye (D-BULL)' : `Double ${currentScore / 2} (D${currentScore / 2})`;
+          bustExplanation = `In Double Out, you must finish on a Double! (Need ${targetDouble} to win). Switch to 'Open Out' above to allow singles.`;
         } else {
           // WIN!
           if (turn === 1) setScore501P1(0);
@@ -205,16 +226,16 @@ export const Darts: React.FC = () => {
       }
 
       if (isBust) {
-        triggerHaptic('success');
+        triggerHaptic('warning');
         // Reset score back to turn start
         if (turn === 1) setScore501P1(turnStartScore501);
         else setScore501P2(turnStartScore501);
 
-        setStatusMessage(`BUST! Scored ${dart.label}. Reset to ${turnStartScore501}. Turn over.`);
-        // End turn immediately
+        setStatusMessage(`BUST! Hit ${dart.label}. ${bustExplanation} Reset to ${turnStartScore501}.`);
+        // End turn immediately with enough delay to read the rule explanation
         setTimeout(() => {
           advanceTurn();
-        }, 1200);
+        }, 2200);
         return;
       } else {
         // Valid score reduction
@@ -328,7 +349,9 @@ export const Darts: React.FC = () => {
         }
       }
 
-      ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
+      ctx.clearRect(0, 0, BOARD_SIZE * 2, BOARD_SIZE * 2);
+      ctx.save();
+      ctx.scale(2, 2);
 
       // 1. Rustic Oak Dartboard Cabinet Surround
       ctx.fillStyle = '#1c1917';
@@ -610,6 +633,7 @@ export const Darts: React.FC = () => {
         }
       }
 
+      ctx.restore();
       animId = requestAnimationFrame(render);
     };
 
@@ -645,9 +669,10 @@ export const Darts: React.FC = () => {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scale = BOARD_SIZE / rect.width;
-    const px = (e.clientX - rect.left) * scale;
-    const py = (e.clientY - rect.top) * scale;
+    const scaleX = BOARD_SIZE / rect.width;
+    const scaleY = BOARD_SIZE / rect.height;
+    const px = (e.clientX - rect.left) * scaleX;
+    const py = (e.clientY - rect.top) * scaleY;
 
     stateRef.current.isDragging = true;
     stateRef.current.dragPointerStart = { x: px, y: py };
@@ -663,9 +688,10 @@ export const Darts: React.FC = () => {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scale = BOARD_SIZE / rect.width;
-    const px = (e.clientX - rect.left) * scale;
-    const py = (e.clientY - rect.top) * scale;
+    const scaleX = BOARD_SIZE / rect.width;
+    const scaleY = BOARD_SIZE / rect.height;
+    const px = (e.clientX - rect.left) * scaleX;
+    const py = (e.clientY - rect.top) * scaleY;
 
     const dx = px - s.dragPointerStart.x;
     const dy = py - s.dragPointerStart.y;
@@ -697,9 +723,9 @@ export const Darts: React.FC = () => {
       />
 
       {/* Main Container */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col items-center justify-between p-2 sm:p-3 overflow-hidden w-full max-w-2xl mx-auto">
         {/* Game Mode Selector & Chalkboard HUD */}
-        <div className="w-full max-w-sm flex items-center justify-between px-3 py-1.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-md mb-2">
+        <div className="w-full max-w-md md:max-w-lg flex items-center justify-between px-3 py-1.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-md shrink-0 mb-1">
           {/* Mode Switcher */}
           <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-xl border border-white/10">
             <button
@@ -747,44 +773,66 @@ export const Darts: React.FC = () => {
           {mode === '501' && (
             <button
               onClick={() => setDoubleOut(!doubleOut)}
-              className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase border ${
-                doubleOut ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-white/5 text-white/40 border-white/10'
+              title={
+                doubleOut
+                  ? 'Double Out is ON (regulation): Final checkout dart must be a Double (e.g. D4 for 8). Tap to switch to Open Out.'
+                  : 'Open Out is ON: Any dart reducing score to 0 wins. Tap to switch to Double Out.'
+              }
+              className={`text-[10px] px-2.5 py-0.5 rounded-md font-black uppercase border transition-all cursor-pointer ${
+                doubleOut
+                  ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500/50 shadow-sm'
+                  : 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm'
               }`}
             >
-              {doubleOut ? 'Double Out' : 'Open Out'}
+              {doubleOut ? '🎯 Double Out' : '⚡ Open Out'}
             </button>
           )}
         </div>
 
-        {/* Sisal Dartboard Canvas Container */}
-        <div className="relative flex items-center justify-center max-h-[66vh] aspect-square clubhouse-board-depth table-flat rounded-full overflow-hidden shadow-2xl border-4 border-[#3e1f0c]">
-          <canvas
-            ref={canvasRef}
-            width={BOARD_SIZE}
-            height={BOARD_SIZE}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            className="w-full h-full touch-none cursor-crosshair"
-          />
+        {/* 501 Checkout Suggestion Banner */}
+        {mode === '501' && (() => {
+          const currentScore = turn === 1 ? score501P1 : score501P2;
+          const advice = getCheckoutGuide(currentScore, doubleOut);
+          if (!advice) return null;
+          return (
+            <div className="flex items-center gap-1.5 px-3 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full text-amber-300 text-[11px] font-bold shadow-sm shrink-0 mb-1">
+              <span>🎯</span>
+              <span>{advice}</span>
+            </div>
+          );
+        })()}
 
-          {/* Darts in Hand Indicator (Bottom Left) */}
-          <div className="absolute bottom-3 left-4 flex gap-1.5 pointer-events-none bg-black/60 px-2.5 py-1 rounded-full border border-white/15">
-            {[1, 2, 3].map((num) => (
-              <div
-                key={num}
-                className={`w-2.5 h-6 rounded-xs transition-opacity ${
-                  num <= dartsLeftInTurn ? (turn === 1 ? 'bg-player-1' : 'bg-player-2') : 'bg-stone-600 opacity-30'
-                }`}
-              />
-            ))}
+        {/* Sisal Dartboard Canvas Container - Dynamic Responsive Sizing */}
+        <div className="flex-1 min-h-0 w-full flex items-center justify-center py-1">
+          <div className="relative aspect-square h-full max-h-full max-w-full clubhouse-board-depth table-flat rounded-full overflow-hidden shadow-2xl border-4 border-[#3e1f0c] flex items-center justify-center">
+            <canvas
+              ref={canvasRef}
+              width={BOARD_SIZE * 2}
+              height={BOARD_SIZE * 2}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className="w-full h-full touch-none cursor-crosshair"
+            />
+
+            {/* Darts in Hand Indicator (Bottom Left) */}
+            <div className="absolute bottom-3 left-4 flex gap-1.5 pointer-events-none bg-black/60 px-2.5 py-1 rounded-full border border-white/15">
+              {[1, 2, 3].map((num) => (
+                <div
+                  key={num}
+                  className={`w-2.5 h-6 rounded-xs transition-opacity ${
+                    num <= dartsLeftInTurn ? (turn === 1 ? 'bg-player-1' : 'bg-player-2') : 'bg-stone-600 opacity-30'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Cricket Tally Card (Visible in Cricket Mode) */}
         {mode === 'cricket' && (
-          <div className="w-full max-w-sm grid grid-cols-7 gap-1 mt-2 bg-black/60 p-2 rounded-2xl border border-[#3e444c] text-center">
+          <div className="w-full max-w-md md:max-w-lg grid grid-cols-7 gap-1 bg-black/60 p-1.5 rounded-2xl border border-[#3e444c] text-center shrink-0 mb-1">
             {[20, 19, 18, 17, 16, 15, 25].map((target) => {
               const data = cricketState[target];
               const p1Closed = data.p1Marks >= 3;
@@ -811,7 +859,7 @@ export const Darts: React.FC = () => {
         )}
 
         {/* Two-Stage Tactile Aiming & Throw Control Deck */}
-        <div className="w-full max-w-sm flex flex-col items-center gap-2 mt-2 px-1">
+        <div className="w-full max-w-md md:max-w-lg flex flex-col items-center gap-1.5 shrink-0 px-1">
           {aimStage === 'positioning' ? (
             <div className="w-full flex flex-col gap-1.5">
               <button

@@ -671,7 +671,7 @@ export const AirHockey: React.FC = () => {
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{ touchAction: 'none', userSelect: 'none' }}
-          className="w-full h-full max-w-xs sm:max-w-md md:max-w-lg rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-slate-100 border-4 sm:border-6 border-slate-700 cursor-crosshair shadow-2xl"
+          className="w-full h-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-slate-100 border-4 sm:border-6 border-slate-700 cursor-crosshair shadow-2xl"
         />
       </main>
 
