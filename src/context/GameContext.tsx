@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import type { GameId, PlayerNumber, GameStatus, GameSettings, GameContextValue } from '../types/game';
+import type { GameId, PlayerNumber, GameStatus, GameSettings, GameContextValue, TableTheme } from '../types/game';
 
 const GameContext = createContext<GameContextValue | null>(null);
 
@@ -7,12 +7,23 @@ export interface GameProviderProps {
   children: React.ReactNode;
 }
 
+const getStoredTheme = (): TableTheme => {
+  if (typeof window === 'undefined') return 'wood';
+  const saved = localStorage.getItem('tabletop_theme');
+  if (saved === 'wood' || saved === 'midnight' || saved === 'emerald' || saved === 'arcade') {
+    return saved;
+  }
+  return 'wood';
+};
+
 export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [activeGame, setActiveGame] = useState<GameId | null>(null);
   const [currentPlayer, setCurrentPlayer] = useState<PlayerNumber>(1);
   const [gameStatus, setGameStatus] = useState<GameStatus>('lobby');
+  const [theme, setThemeState] = useState<TableTheme>(getStoredTheme);
   const [settings, setSettings] = useState<GameSettings>({
     haptics: true,
+    theme: getStoredTheme(),
   });
 
   const triggerHaptic = useCallback((pattern: number | number[] = 15) => {
@@ -24,6 +35,17 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
       }
     }
   }, []);
+
+  const setTheme = useCallback((newTheme: TableTheme) => {
+    setThemeState(newTheme);
+    setSettings((prev) => ({ ...prev, theme: newTheme }));
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('tabletop_theme', newTheme);
+      } catch {}
+    }
+    triggerHaptic(20);
+  }, [triggerHaptic]);
 
   const startGame = useCallback((gameId: GameId) => {
     setActiveGame(gameId);
@@ -62,6 +84,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     currentPlayer,
     gameStatus,
     settings,
+    theme,
+    setTheme,
     startGame,
     resetToMenu,
     togglePlayerTurn,
@@ -73,6 +97,8 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
     currentPlayer,
     gameStatus,
     settings,
+    theme,
+    setTheme,
     startGame,
     resetToMenu,
     togglePlayerTurn,

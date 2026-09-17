@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameIcon } from './GameIcon';
 import { GameRulesModal } from './GameRulesModal';
+import { RemoteDuelModal } from './RemoteDuelModal';
 import type { GameMetadata, GameId } from '../types/game';
 import { playTapSound, triggerHaptic } from '../utils/feedback';
 
@@ -191,55 +192,106 @@ export const GAME_CATALOG: GameMetadata[] = [
   },
 ];
 
+import type { TableTheme } from '../types/game';
+
 export const MainMenu: React.FC = () => {
-  const { startGame, settings, toggleHaptics } = useGame();
+  const { startGame, settings, toggleHaptics, theme, setTheme } = useGame();
 
   const [selectedRulesGame, setSelectedRulesGame] = useState<GameId | null>(null);
+  const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
+
+  const THEMES: { id: TableTheme; label: string; icon: string }[] = [
+    { id: 'wood', label: 'Wood', icon: '🪵' },
+    { id: 'midnight', label: 'Night', icon: '🌌' },
+    { id: 'emerald', label: 'Felt', icon: '🟢' },
+    { id: 'arcade', label: 'Arcade', icon: '⚡' },
+  ];
 
   return (
     <div className="flex flex-col h-full w-full justify-between">
       {/* Top Header Bar */}
       <header
         style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
-        className="px-6 pb-3 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50"
+        className="px-4 sm:px-6 pb-2.5 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 gap-2"
       >
-        <div>
-          <h1 className="text-xl font-black text-container-dark tracking-tight uppercase flex items-center gap-2">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-black text-container-dark tracking-tight uppercase flex items-center gap-2 truncate">
             <span>Tabletop Games</span>
           </h1>
-          <p className="text-xs font-semibold text-[#7d6753]">
-            22 Classic 2-Player Games • Local Pass &amp; Play
+          <p className="text-[11px] sm:text-xs font-semibold text-[#7d6753] truncate">
+            26 Classic 2-Player Games • Pass &amp; Play • AI • Remote Duel
           </p>
         </div>
 
-        {/* Haptic & Sound Toggle */}
-        <button
-          onClick={toggleHaptics}
-          type="button"
-          aria-label={settings.haptics ? 'Haptics Enabled' : 'Haptics Disabled'}
-          className="w-10 h-10 rounded-2xl bg-container-dark/10 hover:bg-container-dark/15 active:scale-95 transition-all flex items-center justify-center text-container-dark shadow-inner"
-        >
-          {settings.haptics ? (
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 8v8" />
-              <path d="M6 5v14" />
-              <path d="M10 2v20" />
-              <path d="M14 2v20" />
-              <path d="M18 5v14" />
-              <path d="M22 8v8" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="2" y1="2" x2="22" y2="22" />
-              <path d="M6 5v5" />
-              <path d="M6 15v4" />
-              <path d="M10 5v15" />
-              <path d="M14 2v10" />
-              <path d="M14 17v5" />
-              <path d="M18 7v11" />
-            </svg>
-          )}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Online Remote Duel Button */}
+          <button
+            onClick={() => {
+              triggerHaptic('light');
+              playTapSound();
+              setShowRemoteModal(true);
+            }}
+            type="button"
+            aria-label="Online Remote Duel"
+            title="Online P2P Duel"
+            className="px-2.5 py-1.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-900 border border-amber-500/40 text-xs font-black shadow-xs transition-all flex items-center gap-1.5"
+          >
+            <span>🌐</span>
+            <span className="hidden sm:inline">Online Duel</span>
+          </button>
+
+          {/* Theme Selector Pill Group */}
+          <div className="flex items-center bg-container-dark/10 p-1 rounded-2xl border border-stone-300/40 shadow-inner">
+            {THEMES.map((t) => {
+              const isActive = theme === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  type="button"
+                  title={`${t.label} Theme`}
+                  className={`px-2 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-amber-500 text-stone-900 shadow-sm scale-102'
+                      : 'text-stone-600 hover:text-stone-900 opacity-80 hover:opacity-100'
+                  }`}
+                >
+                  <span>{t.icon}</span>
+                  <span className="hidden md:inline text-[11px]">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Haptic & Sound Toggle */}
+          <button
+            onClick={toggleHaptics}
+            type="button"
+            aria-label={settings.haptics ? 'Haptics Enabled' : 'Haptics Disabled'}
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-container-dark/10 hover:bg-container-dark/15 active:scale-95 transition-all flex items-center justify-center text-container-dark shadow-inner"
+          >
+            {settings.haptics ? (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 8v8" />
+                <path d="M6 5v14" />
+                <path d="M10 2v20" />
+                <path d="M14 2v20" />
+                <path d="M18 5v14" />
+                <path d="M22 8v8" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="2" y1="2" x2="22" y2="22" />
+                <path d="M6 5v5" />
+                <path d="M6 15v4" />
+                <path d="M10 5v15" />
+                <path d="M14 2v10" />
+                <path d="M14 17v5" />
+                <path d="M18 7v11" />
+              </svg>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* Main Responsive Game Selection Grid: 2 cols on mobile, 3 on tablet/iPad, 4 on desktop/PC */}
@@ -313,6 +365,12 @@ export const MainMenu: React.FC = () => {
         />
       )}
 
+      {/* Remote Duel WebRTC Modal */}
+      <RemoteDuelModal
+        isOpen={showRemoteModal}
+        onClose={() => setShowRemoteModal(false)}
+      />
+
       {/* Footer Info / Pass & Play Guidance */}
       <footer className="pb-safe px-4 pt-2 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-[11px] font-medium text-[#7d6753]">
         <div className="flex items-center gap-1.5">
@@ -320,10 +378,10 @@ export const MainMenu: React.FC = () => {
             <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
             <line x1="12" y1="18" x2="12.01" y2="18" />
           </svg>
-          <span>Share 1 Device • Turn by Turn</span>
+          <span>Share 1 Device • Play vs CPU • Online Duel</span>
         </div>
         <span className="text-[10px] uppercase font-bold tracking-widest bg-container-dark text-accent-light px-2 py-0.5 rounded-md">
-          v1.0
+          v1.8.0
         </span>
       </footer>
     </div>

@@ -5,11 +5,13 @@ import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import {
   triggerHaptic,
+  triggerCollisionHaptic,
   playCurlingGlideSound,
   playCurlingSweepSound,
   playCurlingClackSound,
   playBounceSound,
 } from '../utils/feedback';
+import { calculateDynamicShadow } from '../utils/lighting';
 
 interface CurlingStone {
   id: number;
@@ -328,7 +330,7 @@ export const ToyCurling: React.FC = () => {
             const impactForce = Math.hypot(kx, ky);
             if (impactForce > 0.4) {
               playCurlingClackSound(Math.min(1.5, impactForce / 4));
-              triggerHaptic('medium');
+              triggerCollisionHaptic(impactForce, 6);
             }
           }
         }
@@ -562,10 +564,11 @@ export const ToyCurling: React.FC = () => {
         ctx.save();
         ctx.translate(sx, sy);
 
-        // Stone Shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        // Dynamic 2.5D Stone Shadow relative to house button light
+        const shadow = calculateDynamicShadow(sx, sy, SHEET_WIDTH * 0.5, BUTTON_Y, 5.5, 3.5);
+        ctx.fillStyle = shadow.color;
         ctx.beginPath();
-        ctx.ellipse(2, 4, STONE_RADIUS, STONE_RADIUS * 0.75, 0, 0, Math.PI * 2);
+        ctx.ellipse(shadow.offsetX, shadow.offsetY, STONE_RADIUS, STONE_RADIUS * 0.78, 0, 0, Math.PI * 2);
         ctx.fill();
 
         // Outer Granite Band

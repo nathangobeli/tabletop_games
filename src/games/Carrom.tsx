@@ -3,7 +3,8 @@ import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
-import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
+import { triggerHaptic, triggerCollisionHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
+import { renderDynamicCircleShadow } from '../utils/lighting';
 
 type PieceType = 'white' | 'black' | 'queen' | 'striker';
 
@@ -346,9 +347,10 @@ export const Carrom: React.FC = () => {
         p2.vx += p * nx * RESTITUTION;
         p2.vy += p * ny * RESTITUTION;
 
-        if (Math.hypot(kx, ky) > 1.2) {
+        const relSpeed = Math.hypot(kx, ky);
+        if (relSpeed > 0.8) {
           playTapSound();
-          triggerHaptic('light');
+          triggerCollisionHaptic(relSpeed, 12);
         }
       }
     };
@@ -506,10 +508,8 @@ export const Carrom: React.FC = () => {
       for (const piece of s.pieces) {
         if (piece.pocketsSunk) continue;
 
-        ctx.beginPath();
-        ctx.arc(piece.x + 1.5, piece.y + 2, piece.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fill();
+        // Dynamic 2.5D shadow cast from board center light
+        renderDynamicCircleShadow(ctx, piece.x, piece.y, piece.radius, w / 2, h / 2, 4.0, 2.0);
 
         ctx.beginPath();
         ctx.arc(piece.x, piece.y, piece.radius, 0, Math.PI * 2);
@@ -555,10 +555,8 @@ export const Carrom: React.FC = () => {
       // 6. Striker Disc
       const stk = s.striker;
       if (!stk.pocketsSunk) {
-        ctx.beginPath();
-        ctx.arc(stk.x + 2, stk.y + 2.5, stk.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fill();
+        // Dynamic 2.5D striker shadow cast from board center light
+        renderDynamicCircleShadow(ctx, stk.x, stk.y, stk.radius, w / 2, h / 2, 5.0, 2.5);
 
         ctx.beginPath();
         ctx.arc(stk.x, stk.y, stk.radius, 0, Math.PI * 2);

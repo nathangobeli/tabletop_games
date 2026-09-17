@@ -1,9 +1,12 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { GameHeader } from '../components/GameHeader';
+import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { RemoteDuelModal } from '../components/RemoteDuelModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
+import { requestAIMove } from '../utils/aiClient';
+import { multiplayer } from '../utils/multiplayer';
 
 // 8x8 Board representation:
 // 0 = empty
@@ -18,6 +21,19 @@ interface JumpMove {
   toC: number;
   capturedR: number;
   capturedC: number;
+}
+
+interface AvailableMove {
+  toR: number;
+  toC: number;
+  capturedR: number;
+  capturedC: number;
+}
+
+interface CheckersSnapshot {
+  board: CheckerPiece[][];
+  turn: PlayerNumber;
+  statusMessage: string;
 }
 
 export const Checkers: React.FC = () => {
@@ -44,7 +60,15 @@ export const Checkers: React.FC = () => {
   const [inMultiJump, setInMultiJump] = useState<[number, number] | null>(null);
   const [winner, setWinner] = useState<PlayerNumber | null>(null);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [isThinking, setIsThinking] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('Player 1 (Red): Select a piece to move');
+
+  // Modes & Multiplayer
+  const [gameMode, setGameMode] = useState<GamePlayMode>('pass-and-play');
+  const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
+
+  // State History for Undo
+  const [history, setHistory] = useState<CheckersSnapshot[]>([]);
 
   // Count pieces
   const { p1Count, p2Count } = useMemo(() => {
@@ -60,16 +84,22 @@ export const Checkers: React.FC = () => {
     return { p1Count: p1, p2Count: p2 };
   }, [board]);
 
-  const resetGame = useCallback(() => {
+  const resetGame = useCallback((isRemote = false) => {
     setBoard(createInitialBoard());
     setTurn(1);
     setSelectedPos(null);
     setInMultiJump(null);
     setWinner(null);
-    setShowTurnTransition(false);
+    setIsAnimating(false);
+    setIsThinking(false);
+    setHistory([]);
     setStatusMessage('Player 1 (Red): Select a piece to move');
     setGameStatus('active');
-  }, [setGameStatus]);
+
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({ type: 'RESTART' });
+    }
+  }, [gameMode, setGameStatus]);
 
   // Determine if a piece belongs to player
   const isPlayerPiece = (val: CheckerPiece, player: PlayerNumber) => {
@@ -156,7 +186,7 @@ export const Checkers: React.FC = () => {
   }, [getJumpsForPiece]);
 
   // Find all valid destinations for the currently selected piece
-  const availableMovesForSelected = useMemo(() => {
+  const availableMovesForSelected: AvailableMove[] = useMemo(() => {
     if (!selectedPos || winner !== null) return [];
     const [sr, sc] = selectedPos;
 
@@ -192,7 +222,8 @@ export const Checkers: React.FC = () => {
     if (opponentPieceCount === 0) {
       const winResult: PlayerNumber = nextPlayer === 1 ? 2 : 1;
       setWinner(winResult);
-      setStatusMessage(`🎉 All opponent pieces captured! Player ${winResult} wins!`);
+      const winnerName = winResult === 1 ? 'Player 1 (Red)' : gameMode === 'vs-cpu' ? '🤖 CPU (Dark)' : 'Player 2 (Dark)';
+      setStatusMessage(`🎉 All opponent pieces captured! ${winnerName} wins!`);
       setGameStatus('finished');
       return true;
     }
@@ -215,16 +246,113 @@ export const Checkers: React.FC = () => {
     if (!hasSimple) {
       const winResult: PlayerNumber = nextPlayer === 1 ? 2 : 1;
       setWinner(winResult);
-      setStatusMessage(`🎉 Opponent is blocked with no moves! Player ${winResult} wins!`);
+      const winnerName = winResult === 1 ? 'Player 1 (Red)' : gameMode === 'vs-cpu' ? '🤖 CPU (Dark)' : 'Player 2 (Dark)';
+      setStatusMessage(`🎉 Opponent is blocked with no moves! ${winnerName} wins!`);
       setGameStatus('finished');
       return true;
     }
 
     return false;
-  }, [getAllJumpsForPlayer, getSimpleMovesForPiece, setGameStatus]);
+  }, [getAllJumpsForPlayer, getSimpleMovesForPiece, gameMode, setGameStatus]);
+
+  // Execute Move
+  const executeMove = useCallback((
+    fromR: number,
+    fromC: number,
+    toR: number,
+    toC: number,
+    capturedR: number,
+    capturedC: number,
+    isRemote = false
+  ) => {
+    // Record history before first move of turn
+    if (!inMultiJump) {
+      setHistory((prev) => [...prev, { board, turn, statusMessage }]);
+    }
+
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({
+        type: 'MOVE',
+        payload: { fromR, fromC, toR, toC, capturedR, capturedC },
+      });
+    }
+
+    const nextBoard = board.map((row) => [...row]);
+    let pieceVal = nextBoard[fromR][fromC];
+    nextBoard[fromR][fromC] = 0;
+    nextBoard[toR][toC] = pieceVal;
+
+    const isCapture = capturedR >= 0 && capturedC >= 0;
+    if (isCapture) {
+      nextBoard[capturedR][capturedC] = 0;
+      playCaptureSound();
+      triggerHaptic('medium');
+    } else {
+      playWoodClackSound();
+      triggerHaptic('light');
+    }
+
+    // King promotion
+    let newlyCrowned = false;
+    if (turn === 1 && pieceVal === 1 && toR === 0) {
+      nextBoard[toR][toC] = 3;
+      pieceVal = 3;
+      newlyCrowned = true;
+    } else if (turn === 2 && pieceVal === 2 && toR === 7) {
+      nextBoard[toR][toC] = 4;
+      pieceVal = 4;
+      newlyCrowned = true;
+    }
+
+    // Check for sequential multi-jumps if a capture just occurred
+    if (isCapture && !newlyCrowned) {
+      const furtherJumps = getJumpsForPiece(nextBoard, toR, toC, turn);
+      if (furtherJumps.length > 0) {
+        setBoard(nextBoard);
+        setSelectedPos([toR, toC]);
+        setInMultiJump([toR, toC]);
+        setStatusMessage('Multi-jump available! You must continue capturing.');
+        return;
+      }
+    }
+
+    // Turn complete
+    setBoard(nextBoard);
+    setSelectedPos(null);
+    setInMultiJump(null);
+    setIsAnimating(true);
+
+    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
+
+    setTimeout(() => {
+      setIsAnimating(false);
+      const isOver = checkGameOver(nextBoard, nextPlayer);
+
+      if (!isOver) {
+        setTurn(nextPlayer);
+        setGameStatus('active');
+        if (gameMode === 'vs-cpu' && nextPlayer === 2) {
+          setStatusMessage('🤖 CPU is analyzing board positions...');
+        } else {
+          setStatusMessage(`Player ${nextPlayer}'s turn (${nextPlayer === 1 ? 'Red' : 'Dark'}).`);
+        }
+      }
+    }, 320);
+  }, [board, turn, inMultiJump, statusMessage, gameMode, getJumpsForPiece, checkGameOver, setGameStatus]);
 
   const handleSquareClick = useCallback((r: number, c: number) => {
-    if (winner !== null || isAnimating) return;
+    if (winner !== null || isAnimating || isThinking) return;
+
+    if (gameMode === 'remote') {
+      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
+      if (turn !== localPlayer) {
+        setStatusMessage('Waiting for remote opponent...');
+        triggerHaptic('light');
+        return;
+      }
+    }
+
+    if (gameMode === 'vs-cpu' && turn === 2) return;
 
     const cellVal = board[r][c];
 
@@ -246,93 +374,135 @@ export const Checkers: React.FC = () => {
     // If a piece is currently selected, check if (r, c) is a valid move/jump target
     if (selectedPos) {
       const [fromR, fromC] = selectedPos;
-      let pieceVal = board[fromR][fromC];
-
       const validMove = availableMovesForSelected.find((m) => m.toR === r && m.toC === c);
       if (!validMove) {
-        // Not a valid destination
         if (!inMultiJump) {
           setSelectedPos(null);
         }
         return;
       }
 
-      // Execute Move
-      const nextBoard = board.map((row) => [...row]);
-      nextBoard[fromR][fromC] = 0;
-      nextBoard[r][c] = pieceVal;
-
-      const isCapture = !!validMove.jump;
-      if (validMove.jump) {
-        // Remove captured piece
-        nextBoard[validMove.jump.capturedR][validMove.jump.capturedC] = 0;
-        playCaptureSound();
-        triggerHaptic('medium');
-      } else {
-        playWoodClackSound();
-        triggerHaptic('light');
-      }
-
-      // Check King promotion
-      // P1 men (1) reaching row 0 promote to King (3)
-      // P2 men (2) reaching row 7 promote to King (4)
-      let newlyCrowned = false;
-      if (turn === 1 && pieceVal === 1 && r === 0) {
-        nextBoard[r][c] = 3;
-        pieceVal = 3;
-        newlyCrowned = true;
-      } else if (turn === 2 && pieceVal === 2 && r === 7) {
-        nextBoard[r][c] = 4;
-        pieceVal = 4;
-        newlyCrowned = true;
-      }
-
-      // Check for sequential multi-jumps if a capture just occurred
-      // (Standard rule: newly promoted king cannot continue jumping on same turn)
-      if (isCapture && !newlyCrowned) {
-        const furtherJumps = getJumpsForPiece(nextBoard, r, c, turn);
-        if (furtherJumps.length > 0) {
-          setBoard(nextBoard);
-          setSelectedPos([r, c]);
-          setInMultiJump([r, c]);
-          setStatusMessage('Multi-jump available! You must continue capturing.');
-          return;
-        }
-      }
-
-      // Immediate visual board update with animation lock
-      setBoard(nextBoard);
-      setSelectedPos(null);
-      setInMultiJump(null);
-      setIsAnimating(true);
-
-      const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-
-      // Allow 350ms for piece motion and capture settling before checking end
-      setTimeout(() => {
-        setIsAnimating(false);
-        const isOver = checkGameOver(nextBoard, nextPlayer);
-
-        if (!isOver) {
-          setTurn(nextPlayer);
-          setGameStatus('active');
-          setStatusMessage(`Player ${nextPlayer}'s turn (${nextPlayer === 1 ? 'Red' : 'Black'}).`);
-        }
-      }, 350);
+      executeMove(fromR, fromC, r, c, validMove.capturedR, validMove.capturedC, false);
     }
   }, [
-    board,
-    turn,
     winner,
     isAnimating,
-    selectedPos,
+    isThinking,
+    gameMode,
+    turn,
+    board,
     inMultiJump,
+    selectedPos,
     availableMovesForSelected,
     getAllJumpsForPlayer,
-    getJumpsForPiece,
-    checkGameOver,
-    setGameStatus,
+    executeMove,
   ]);
+
+  // Undo Handler
+  const handleUndo = useCallback((isRemoteTrigger = false) => {
+    if (isAnimating || isThinking || history.length === 0) return;
+
+    triggerHaptic('medium');
+    playWoodClackSound();
+
+    if (gameMode === 'vs-cpu') {
+      const rollbackSteps = history.length >= 2 ? 2 : 1;
+      const targetIndex = history.length - rollbackSteps;
+      const targetState = history[targetIndex];
+
+      setBoard(targetState.board);
+      setTurn(targetState.turn);
+      setStatusMessage(targetState.statusMessage);
+      setSelectedPos(null);
+      setInMultiJump(null);
+      setWinner(null);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setGameStatus('active');
+    } else {
+      const targetIndex = history.length - 1;
+      const targetState = history[targetIndex];
+
+      setBoard(targetState.board);
+      setTurn(targetState.turn);
+      setStatusMessage(targetState.statusMessage);
+      setSelectedPos(null);
+      setInMultiJump(null);
+      setWinner(null);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setGameStatus('active');
+
+      if (gameMode === 'remote' && !isRemoteTrigger) {
+        multiplayer.send({ type: 'UNDO' });
+      }
+    }
+  }, [isAnimating, isThinking, history, gameMode, setGameStatus]);
+
+  // AI CPU Move Trigger (Web Worker Minimax with Alpha-Beta Pruning)
+  useEffect(() => {
+    if (gameMode !== 'vs-cpu' || turn !== 2 || winner !== null || isAnimating || isThinking) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsThinking(true);
+    setStatusMessage('🤖 CPU is thinking...');
+
+    const timer = setTimeout(async () => {
+      try {
+        const move = await requestAIMove<{
+          fromR: number;
+          fromC: number;
+          toR: number;
+          toC: number;
+          isJump: boolean;
+          capturedR?: number;
+          capturedC?: number;
+        }>('checkers', board, 2, 'medium');
+
+        if (!cancelled && move) {
+          setIsThinking(false);
+          executeMove(
+            move.fromR,
+            move.fromC,
+            move.toR,
+            move.toC,
+            move.capturedR ?? -1,
+            move.capturedC ?? -1,
+            false
+          );
+        } else if (!cancelled) {
+          setIsThinking(false);
+        }
+      } catch (err) {
+        console.error('Checkers CPU calculation failed:', err);
+        if (!cancelled) setIsThinking(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setIsThinking(false);
+    };
+  }, [gameMode, turn, winner, isAnimating, board, executeMove]);
+
+  // WebRTC Remote Peer Listener
+  useEffect(() => {
+    const unbind = multiplayer.onMessage((msg) => {
+      if (msg.type === 'MOVE' && msg.payload) {
+        const { fromR, fromC, toR, toC, capturedR, capturedC } = msg.payload;
+        executeMove(fromR, fromC, toR, toC, capturedR ?? -1, capturedC ?? -1, true);
+      } else if (msg.type === 'RESTART') {
+        resetGame(true);
+      } else if (msg.type === 'UNDO') {
+        handleUndo(true);
+      }
+    });
+
+    return unbind;
+  }, [executeMove, resetGame, handleUndo]);
+
+  const canUndo = history.length > (gameMode === 'vs-cpu' ? 1 : 0) && !isAnimating && !isThinking;
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden relative select-none">
@@ -341,11 +511,20 @@ export const Checkers: React.FC = () => {
         subtitle="Classic 8x8 Draughts"
         turn={turn}
         scoreP1={`${p1Count} Red`}
-        scoreP2={`${p2Count} Dark`}
+        scoreP2={gameMode === 'vs-cpu' ? `${p2Count} 🤖 CPU` : `${p2Count} Dark`}
         p1Label="P1 (Red)"
-        p2Label="P2 (Dark)"
-        onRestart={resetGame}
+        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (Dark)' : 'P2 (Dark)'}
+        onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
+        gameMode={gameMode}
+        onToggleGameMode={(m) => {
+          setGameMode(m);
+          resetGame(false);
+        }}
+        supportedModes={['pass-and-play', 'vs-cpu', 'remote']}
+        onUndo={handleUndo}
+        canUndo={canUndo}
+        onOpenRemoteModal={() => setShowRemoteModal(true)}
       />
 
       {/* Main 8x8 Board Area - Responsive on iPhone, iPad, PC */}
@@ -365,7 +544,7 @@ export const Checkers: React.FC = () => {
                       key={`${r}-${c}`}
                       type="button"
                       onClick={() => handleSquareClick(r, c)}
-                      disabled={winner !== null || !isDarkSquare}
+                      disabled={winner !== null || !isDarkSquare || isAnimating || isThinking || (gameMode === 'vs-cpu' && turn === 2)}
                       className={`relative w-full h-full flex items-center justify-center transition-all ${
                         isDarkSquare 
                           ? 'bg-gradient-to-br from-[#7f1d1d] to-[#450a0a] shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]' 
@@ -439,10 +618,16 @@ export const Checkers: React.FC = () => {
               p2Value: winner === 2 ? 'Captured All' : 'Runner Up',
             },
           ]}
-          onRestart={resetGame}
+          onRestart={() => resetGame(false)}
           onMenu={resetToMenu}
         />
       )}
+
+      {/* WebRTC Remote Duel Modal */}
+      <RemoteDuelModal
+        isOpen={showRemoteModal}
+        onClose={() => setShowRemoteModal(false)}
+      />
     </div>
   );
 };

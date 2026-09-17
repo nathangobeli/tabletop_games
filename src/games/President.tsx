@@ -10,7 +10,15 @@ import {
   triggerHaptic,
 } from '../utils/feedback';
 
-export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs' | 'joker';
+import {
+  shuffleDeck,
+  dealCards,
+  SUIT_SYMBOLS as BASE_SUIT_SYMBOLS,
+  STANDARD_SUITS,
+  type StandardSuit,
+} from '../utils/deck';
+
+export type Suit = StandardSuit | 'joker';
 export type Rank = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 99; // 11=J, 12=Q, 13=K, 14=A, 15=2, 99=Joker
 
 export interface PlayingCard {
@@ -21,7 +29,7 @@ export interface PlayingCard {
   isJoker?: boolean;
 }
 
-const SUITS: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
+const SUITS: Suit[] = [...STANDARD_SUITS];
 const RANKS: Rank[] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 const RANK_LABELS: Record<Rank, string> = {
@@ -42,10 +50,7 @@ const RANK_LABELS: Record<Rank, string> = {
 };
 
 const SUIT_SYMBOLS: Record<Suit, string> = {
-  spades: '♠',
-  hearts: '♥',
-  diamonds: '♦',
-  clubs: '♣',
+  ...BASE_SUIT_SYMBOLS,
   joker: '🃏',
 };
 
@@ -98,7 +103,7 @@ export const PresidentCardView: React.FC<{
       }`}
     >
       {/* Top Left Pip */}
-      <div className="flex flex-col items-start leading-none z-10">
+      <div className="flex flex-col items-start leading-none z-10 font-serif-classic">
         <span className={`text-xs sm:text-sm font-black ${textColor}`}>
           {card.label}
         </span>
@@ -110,7 +115,7 @@ export const PresidentCardView: React.FC<{
       {/* Center Art */}
       <div className="flex-1 flex items-center justify-center">
         {card.isJoker ? (
-          <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-600 text-xs font-black">
+          <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-600 text-xs font-black font-serif-classic">
             👑
           </div>
         ) : (
@@ -121,7 +126,7 @@ export const PresidentCardView: React.FC<{
       </div>
 
       {/* Bottom Right Pip (Inverted) */}
-      <div className="flex flex-col items-end leading-none rotate-180 z-10">
+      <div className="flex flex-col items-end leading-none rotate-180 z-10 font-serif-classic">
         <span className={`text-xs sm:text-sm font-black ${textColor}`}>
           {card.label}
         </span>
@@ -170,11 +175,9 @@ export const President: React.FC = () => {
 
   // Initialize Game
   const resetGame = useCallback(() => {
-    const deck = CREATE_PRESIDENT_DECK().sort(() => Math.random() - 0.5);
-
-    // Deal 18 cards each
-    const p1 = deck.slice(0, 18);
-    const p2 = deck.slice(18, 36);
+    const deck = shuffleDeck(CREATE_PRESIDENT_DECK());
+    const { hands } = dealCards(deck, [18, 18]);
+    const [p1, p2] = hands;
 
     setIsRevolution(false);
     setHandP1(p1.sort((a, b) => a.rank - b.rank));
@@ -374,14 +377,14 @@ export const President: React.FC = () => {
         <div className="w-full flex items-center justify-between px-3 py-1.5 bg-black/60 border border-[#3e444c] rounded-2xl shadow-md shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-player-1" />
-            <span className={`text-xs font-black ${turn === 1 ? 'text-player-1' : 'text-stone-400'}`}>
+            <span className={`text-xs font-black font-mono-digital ${turn === 1 ? 'text-player-1' : 'text-stone-400'}`}>
               P1 Cards: {handP1.length}
             </span>
           </div>
 
           {/* Revolution Indicator */}
           <div
-            className={`px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider transition-all ${
+            className={`px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider font-serif-classic transition-all ${
               isRevolution
                 ? 'bg-amber-500 text-stone-950 animate-pulse shadow-md'
                 : 'bg-white/10 text-stone-300'
@@ -391,7 +394,7 @@ export const President: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-black ${turn === 2 ? 'text-player-2' : 'text-stone-400'}`}>
+            <span className={`text-xs font-black font-mono-digital ${turn === 2 ? 'text-player-2' : 'text-stone-400'}`}>
               P2 Cards: {handP2.length}
             </span>
             <span className="w-3 h-3 rounded-full bg-player-2" />
@@ -402,9 +405,9 @@ export const President: React.FC = () => {
         <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center py-1">
           <div className="w-full h-full max-h-[46vh] bg-[#3b1d07] rounded-3xl border-4 border-[#200e03] shadow-2xl p-3 flex flex-col items-center justify-between relative overflow-hidden clubhouse-board-depth">
             {/* Table Branding */}
-            <div className="text-[10px] font-black uppercase tracking-widest text-amber-500/60 flex items-center justify-between w-full px-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-500/60 flex items-center justify-between w-full px-2 font-serif-classic">
               <span>President Saloon Duel</span>
-              <span>Discards: {discardHistory.length} tricks</span>
+              <span className="font-mono-digital">Discards: {discardHistory.length} tricks</span>
             </div>
 
             {/* Active Stack Plate */}

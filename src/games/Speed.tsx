@@ -4,28 +4,20 @@ import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound, playErrorBuzz } from '../utils/feedback';
+import { shuffleDeck, dealCards, STANDARD_RANK_LABELS } from '../utils/deck';
+
+type SuitSymbol = '♠' | '♥' | '♦' | '♣';
 
 interface Card {
   id: number;
   value: number; // 1 to 13 (1=Ace, 11=Jack, 12=Queen, 13=King)
-  suit: '♠' | '♥' | '♦' | '♣';
+  suit: SuitSymbol;
 }
 
-const SUITS: ('♠' | '♥' | '♦' | '♣')[] = ['♠', '♥', '♦', '♣'];
+const SUITS: SuitSymbol[] = ['♠', '♥', '♦', '♣'];
 
 const getRankLabel = (val: number): string => {
-  switch (val) {
-    case 1:
-      return 'A';
-    case 11:
-      return 'J';
-    case 12:
-      return 'Q';
-    case 13:
-      return 'K';
-    default:
-      return String(val);
-  }
+  return STANDARD_RANK_LABELS[val] || String(val);
 };
 
 // Check if card A can legally be played on top of center card B (+1 or -1, with A/K wrap-around)
@@ -46,12 +38,7 @@ export const Speed: React.FC = () => {
         deck.push({ id: id++, value: v, suit });
       }
     }
-    // Fisher-Yates shuffle
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    return deck;
+    return shuffleDeck(deck);
   };
 
   // Initial deal:
@@ -60,17 +47,8 @@ export const Speed: React.FC = () => {
   // Center: 2 starting active cards
   const initializeGame = () => {
     const deck = generateDeck();
-
-    const p1Hand = deck.slice(0, 5);
-    const p1Draw = deck.slice(5, 20);
-    const p1Side = deck.slice(20, 25);
-
-    const p2Hand = deck.slice(25, 30);
-    const p2Draw = deck.slice(30, 45);
-    const p2Side = deck.slice(45, 50);
-
-    const centerLeft = deck[50];
-    const centerRight = deck[51];
+    const { hands } = dealCards(deck, [5, 15, 5, 5, 15, 5, 1, 1]);
+    const [p1Hand, p1Draw, p1Side, p2Hand, p2Draw, p2Side, centerLeftArr, centerRightArr] = hands;
 
     return {
       p1Hand,
@@ -79,8 +57,8 @@ export const Speed: React.FC = () => {
       p2Hand,
       p2Draw,
       p2Side,
-      centerLeft,
-      centerRight,
+      centerLeft: centerLeftArr[0],
+      centerRight: centerRightArr[0],
     };
   };
 

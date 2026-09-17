@@ -30,8 +30,11 @@ export type PlayerNumber = 1 | 2;
 
 export type GameStatus = 'lobby' | 'active' | 'awaiting_ack' | 'finished';
 
+export type TableTheme = 'wood' | 'midnight' | 'emerald' | 'arcade';
+
 export interface GameSettings {
   haptics: boolean;
+  theme: TableTheme;
 }
 
 export interface GameMetadata {
@@ -47,6 +50,8 @@ export interface GameContextValue {
   currentPlayer: PlayerNumber;
   gameStatus: GameStatus;
   settings: GameSettings;
+  theme: TableTheme;
+  setTheme: (theme: TableTheme) => void;
   startGame: (gameId: GameId) => void;
   resetToMenu: () => void;
   togglePlayerTurn: () => void;

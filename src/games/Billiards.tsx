@@ -5,11 +5,13 @@ import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import {
   triggerHaptic,
+  triggerCollisionHaptic,
   playBilliardsHitSound,
   playPocketDropSound,
   playCueStrikeSound,
   playTapSound,
 } from '../utils/feedback';
+import { renderDynamicCircleShadow } from '../utils/lighting';
 
 export type BallGroup = 'solids' | 'stripes';
 
@@ -431,9 +433,10 @@ export const Billiards: React.FC = () => {
                 b2.vx += p * nx * RESTITUTION;
                 b2.vy += p * ny * RESTITUTION;
 
-                const hitForce = Math.min(1.0, Math.sqrt(kx * kx + ky * ky) / 8);
+                const impactSpeed = Math.sqrt(kx * kx + ky * ky);
+                const hitForce = Math.min(1.0, impactSpeed / 8);
                 playBilliardsHitSound(hitForce);
-                if (hitForce > 0.3) triggerHaptic('light');
+                triggerCollisionHaptic(impactSpeed, 8);
               }
             }
           }
@@ -518,11 +521,17 @@ export const Billiards: React.FC = () => {
       for (const ball of s.balls) {
         if (ball.isPotted) continue;
 
-        // Ball Drop Shadow onto felt
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-        ctx.beginPath();
-        ctx.arc(ball.x + 2, ball.y + 2.5, ball.radius, 0, Math.PI * 2);
-        ctx.fill();
+        // Dynamic 2.5D Ball Drop Shadow onto felt relative to overhead light
+        renderDynamicCircleShadow(
+          ctx,
+          ball.x,
+          ball.y,
+          ball.radius,
+          TABLE_WIDTH * 0.5,
+          TABLE_HEIGHT * 0.45,
+          5.0,
+          2.5
+        );
 
         // Ball Base Body
         const bGrad = ctx.createRadialGradient(

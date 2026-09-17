@@ -748,7 +748,7 @@ export const Darts: React.FC = () => {
 
           {/* Scores Overview */}
           {mode === '501' ? (
-            <div className="flex items-center gap-4 text-xs font-black">
+            <div className="flex items-center gap-4 text-xs font-black font-mono-digital tracking-wider">
               <span className={turn === 1 ? 'text-player-1 scale-110 transition-transform' : 'text-white/60'}>
                 P1: {score501P1}
               </span>
@@ -758,7 +758,7 @@ export const Darts: React.FC = () => {
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-4 text-xs font-black">
+            <div className="flex items-center gap-4 text-xs font-black font-mono-digital tracking-wider">
               <span className={turn === 1 ? 'text-player-1' : 'text-white/60'}>
                 P1: {cricketPointsP1} pts
               </span>
@@ -795,7 +795,7 @@ export const Darts: React.FC = () => {
           const advice = getCheckoutGuide(currentScore, doubleOut);
           if (!advice) return null;
           return (
-            <div className="flex items-center gap-1.5 px-3 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full text-amber-300 text-[11px] font-bold shadow-sm shrink-0 mb-1">
+            <div className="flex items-center gap-1.5 px-3 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full text-amber-300 text-[11px] font-bold font-mono-digital shadow-sm shrink-0 mb-1">
               <span>🎯</span>
               <span>{advice}</span>
             </div>

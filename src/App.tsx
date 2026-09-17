@@ -1,36 +1,58 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { GameProvider, useGame } from './context/GameContext';
 import { MainMenu } from './components/MainMenu';
-import { Mancala } from './games/Mancala';
-import { ConnectFour } from './games/ConnectFour';
-import { DotsAndBoxes } from './games/DotsAndBoxes';
-import { Renegade } from './games/Renegade';
-import { YachtDice } from './games/YachtDice';
-import { Speed } from './games/Speed';
-import { AirHockey } from './games/AirHockey';
-import { ToyTennis } from './games/ToyTennis';
-import { Carrom } from './games/Carrom';
-import { Gomoku } from './games/Gomoku';
-import { Checkers } from './games/Checkers';
-import { Backgammon } from './games/Backgammon';
-import { Billiards } from './games/Billiards';
-import { Darts } from './games/Darts';
-import { Bowling } from './games/Bowling';
-import { MiniShogi } from './games/MiniShogi';
-import { ToyCurling } from './games/ToyCurling';
-import { Hex } from './games/Hex';
-import { Matching } from './games/Matching';
-import { NineMensMorris } from './games/NineMensMorris';
-import { HareAndHounds } from './games/HareAndHounds';
-import { HitAndBlow } from './games/HitAndBlow';
-import { Hanafuda } from './games/Hanafuda';
-import { President } from './games/President';
-import { LastCard } from './games/LastCard';
-import { RiichiMahjong } from './games/RiichiMahjong';
 import { TouchRippleOverlay } from './components/TouchRippleOverlay';
 
+// Dynamic Code-Splitting: Lazy-load individual tabletop titles on-demand
+const Mancala = React.lazy(() => import('./games/Mancala').then((m) => ({ default: m.Mancala })));
+const ConnectFour = React.lazy(() => import('./games/ConnectFour').then((m) => ({ default: m.ConnectFour })));
+const DotsAndBoxes = React.lazy(() => import('./games/DotsAndBoxes').then((m) => ({ default: m.DotsAndBoxes })));
+const Renegade = React.lazy(() => import('./games/Renegade').then((m) => ({ default: m.Renegade })));
+const YachtDice = React.lazy(() => import('./games/YachtDice').then((m) => ({ default: m.YachtDice })));
+const Speed = React.lazy(() => import('./games/Speed').then((m) => ({ default: m.Speed })));
+const AirHockey = React.lazy(() => import('./games/AirHockey').then((m) => ({ default: m.AirHockey })));
+const ToyTennis = React.lazy(() => import('./games/ToyTennis').then((m) => ({ default: m.ToyTennis })));
+const Carrom = React.lazy(() => import('./games/Carrom').then((m) => ({ default: m.Carrom })));
+const Gomoku = React.lazy(() => import('./games/Gomoku').then((m) => ({ default: m.Gomoku })));
+const Checkers = React.lazy(() => import('./games/Checkers').then((m) => ({ default: m.Checkers })));
+const Backgammon = React.lazy(() => import('./games/Backgammon').then((m) => ({ default: m.Backgammon })));
+const Billiards = React.lazy(() => import('./games/Billiards').then((m) => ({ default: m.Billiards })));
+const Darts = React.lazy(() => import('./games/Darts').then((m) => ({ default: m.Darts })));
+const Bowling = React.lazy(() => import('./games/Bowling').then((m) => ({ default: m.Bowling })));
+const MiniShogi = React.lazy(() => import('./games/MiniShogi').then((m) => ({ default: m.MiniShogi })));
+const ToyCurling = React.lazy(() => import('./games/ToyCurling').then((m) => ({ default: m.ToyCurling })));
+const Hex = React.lazy(() => import('./games/Hex').then((m) => ({ default: m.Hex })));
+const Matching = React.lazy(() => import('./games/Matching').then((m) => ({ default: m.Matching })));
+const NineMensMorris = React.lazy(() => import('./games/NineMensMorris').then((m) => ({ default: m.NineMensMorris })));
+const HareAndHounds = React.lazy(() => import('./games/HareAndHounds').then((m) => ({ default: m.HareAndHounds })));
+const HitAndBlow = React.lazy(() => import('./games/HitAndBlow').then((m) => ({ default: m.HitAndBlow })));
+const Hanafuda = React.lazy(() => import('./games/Hanafuda').then((m) => ({ default: m.Hanafuda })));
+const President = React.lazy(() => import('./games/President').then((m) => ({ default: m.President })));
+const LastCard = React.lazy(() => import('./games/LastCard').then((m) => ({ default: m.LastCard })));
+const RiichiMahjong = React.lazy(() => import('./games/RiichiMahjong').then((m) => ({ default: m.RiichiMahjong })));
+
+/**
+ * Tactile procedural loading fallback matching clubhouse wood aesthetic
+ */
+const GameLoadingFallback: React.FC = () => (
+  <div className="w-full h-full flex flex-col items-center justify-center p-6 select-none">
+    <div className="bg-[#2a1a0e]/85 border-2 border-amber-500/40 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 shadow-2xl table-lifted backdrop-blur-sm animate-pulse">
+      <div className="relative w-14 h-14 flex items-center justify-center">
+        <div className="absolute inset-0 rounded-full border-4 border-amber-500/20 border-t-amber-400 animate-spin" />
+        <div className="w-7 h-7 rounded-lg bg-amber-500/30 flex items-center justify-center text-amber-200 text-xs font-black shadow-inner">
+          🎲
+        </div>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-amber-100 font-bold tracking-wide text-sm sm:text-base">Setting Up Table...</span>
+        <span className="text-amber-300/70 text-xs">Loading game assets</span>
+      </div>
+    </div>
+  </div>
+);
+
 const AppContent: React.FC = () => {
-  const { activeGame } = useGame();
+  const { activeGame, theme } = useGame();
 
   const renderActiveGame = () => {
     switch (activeGame) {
@@ -92,11 +114,13 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden wood-table-bg flex flex-col justify-between select-none">
+    <div className={`relative w-screen h-screen overflow-hidden theme-${theme} flex flex-col justify-between select-none transition-colors duration-300`}>
       <TouchRippleOverlay />
-      {/* Screen slide transition wrapper */}
+      {/* Screen slide transition wrapper with dynamic Suspense fallback */}
       <div key={activeGame || 'menu'} className="w-full h-full animate-fade-in flex flex-col justify-between">
-        {renderActiveGame()}
+        <Suspense fallback={<GameLoadingFallback />}>
+          {renderActiveGame()}
+        </Suspense>
       </div>
     </div>
   );

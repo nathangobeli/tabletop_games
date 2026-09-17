@@ -9,6 +9,7 @@ import {
   playVictorySound,
   triggerHaptic,
 } from '../utils/feedback';
+import { shuffleDeck, dealCards } from '../utils/deck';
 
 export type TileSuit = 'pin' | 'sou' | 'man' | 'honor';
 
@@ -347,12 +348,13 @@ export const RiichiMahjong: React.FC = () => {
 
   // Initialize Game
   const resetGame = useCallback(() => {
-    const deck = CREATE_SANMA_DECK().sort(() => Math.random() - 0.5);
+    const deck = shuffleDeck(CREATE_SANMA_DECK());
+    const { hands, remaining: remainingWall } = dealCards(deck, [13, 13, 1]);
+    const [p1Raw, p2Raw, doraArr] = hands;
 
-    const p1 = sortHand(deck.slice(0, 13));
-    const p2 = sortHand(deck.slice(13, 26));
-    const dora = deck[26];
-    const remainingWall = deck.slice(27);
+    const p1 = sortHand(p1Raw);
+    const p2 = sortHand(p2Raw);
+    const dora = doraArr[0];
 
     setWall(remainingWall);
     setDoraTile(dora);

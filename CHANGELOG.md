@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-09-16 — "Next-Gen Play: Web Worker Minimax AI, P2P Remote Duel & State Rollback Undo"
+
+### Added — Web Worker Minimax AI Engine (`src/workers/aiWorker.ts`, `src/utils/aiClient.ts`)
+- **Dedicated Off-Thread Web Worker**:
+  - Implemented zero-dependency Minimax with Alpha-Beta pruning running completely off the main UI thread via Vite Web Worker modules (`new Worker(new URL(...), { type: 'module' })`).
+  - Zero UI frame drops or main-thread locks during deep combinatorial evaluations.
+- **Game-Specific Heuristic Evaluators**:
+  - **Connect Four**: 4-in-a-row window weighting with center-column gravity and instant threat-denial blocking (depth 4–5).
+  - **Checkers**: Mandatory jump enforcement, king promotion valuation, and center-board spatial control (depth 3–4).
+  - **Gomoku**: Threat-space candidate evaluator prioritizing open-fours, split-threes, and defensive blocks over 15x15 board.
+- **Client AI Manager (`requestAIMove`)**:
+  - Promise-based singleton bridge with graceful fallback and humanized move delays (400–450ms) for authentic physical feel.
+
+---
+
+### Added — Zero-Config WebRTC Remote Duel Engine (`src/utils/multiplayer.ts`, `src/components/RemoteDuelModal.tsx`)
+- **Direct Peer-to-Peer Data Channels**:
+  - Integrated `peerjs` WebRTC engine enabling direct real-time play across separate devices with zero server-side state storage.
+  - **4-Digit Room Codes**: Simple numeric room codes (e.g. `4921`) for instant mobile joining without long URLs.
+- **Tactile Remote Duel Modal**:
+  - Styled with dark lacquered wood borders, live connection status pills (`Disconnected`, `Connecting`, `Waiting`, `Connected`), one-tap code copy button, and numeric keypad input.
+- **Bidirectional Event Protocol**:
+  - Serializes `MOVE`, `RESTART`, and `UNDO` payloads directly between host and guest.
+  - Accessible via "🌐 Online Duel" in the Main Menu header or directly within supported game headers.
+
+---
+
+### Added — Universal Turn Rollback & Undo Stack (`src/components/GameHeader.tsx`, `src/games/ConnectFour.tsx`, `src/games/Checkers.tsx`, `src/games/Gomoku.tsx`)
+- **Tactile Header Undo Button**:
+  - Added "↺ Undo" button in `GameHeader` with automatic enabling/disabling based on history depth and animation locks.
+- **Intelligent Dual-Ply Rollback**:
+  - In **Vs. CPU** mode, automatically rewinds 2 plies (reverting both the player's move and the CPU's counter-move) so the human player can re-take their turn cleanly.
+  - In **Pass & Play** and **Remote** modes, rewinds 1 ply and synchronizes state over WebRTC to the remote peer.
+- **Bug Fix**:
+  - Fixed capture piece-removal condition in `Checkers.tsx` by correcting `validMove.capturedR >= 0` check.
+
+---
+
+## [1.7.2] - 2026-09-16 — "Tactile Immersion: Global Theming Engine, Vector Lighting, Velocity Haptics & Typography"
+
+### Added — Global Theming Engine & Design Tokens (`src/index.css`, `src/context/GameContext.tsx`, `src/components/MainMenu.tsx`, `src/App.tsx`)
+- **4 Procedural Tabletop Environments**:
+  - **Classic Wood (`.theme-wood`)**: Signature mahogany/walnut wood grain with warm directional lighting and golden amber vignette.
+  - **Midnight Velvet (`.theme-midnight`)**: Deep obsidian/navy velvet felt with woven micro-texture and sapphire ambient vignette.
+  - **Emerald Parlor (`.theme-emerald`)**: Traditional British gaming club baize cloth with gold/brass trim accents.
+  - **Neon Arcade (`.theme-arcade`)**: Synthwave cyber-grid tabletop with neon cyan/magenta edge glow.
+- **Interactive Header Theme Switcher**:
+  - Tactile segmented pill bar in the Main Menu header allowing instant environment switching.
+  - Automatic persistence across sessions via `localStorage` (`tabletop_theme`).
+
+---
+
+### Added — Dynamic Vector Lighting & 2.5D Pseudo-3D Shadows (`src/utils/lighting.ts`)
+- **Overhead Light Projection Physics**:
+  - Introduced `calculateDynamicShadow()` and canvas rendering helpers (`renderDynamicCircleShadow`, `renderDynamicEllipseShadow`).
+  - Drop shadows dynamically calculate displacement angle, distance, blur diffusion, and opacity relative to the simulated overhead table light source.
+- **Integrated Top-Down Titles**:
+  - `Billiards.tsx`: Billiard balls dynamically cast shadows away from table center as they roll across the felt.
+  - `ToyCurling.tsx`: Granite curling stones project dynamic directional shadows away from the house button.
+  - `Carrom.tsx`: Carrom-men discs and striker cast dynamic radial shadows relative to the center circle.
+
+---
+
+### Added — Velocity-Scaled Haptics & Spring Micro-Animations (`src/utils/feedback.ts`, `src/index.css`)
+- **Impact-Proportional Haptics (`triggerCollisionHaptic`)**:
+  - Dynamically calculates vibration impulse amplitude based on collision speed:
+    - Gentle rolls ($< 35\%$ max speed): Subtle 8ms tick.
+    - Medium impacts ($35\% - 70\%$ max speed): Crisp 18ms pulse.
+    - Heavy smashes ($> 70\%$ max speed): Multi-pulse shockwave `[25ms, 15ms, 35ms]`.
+  - Wired into ball-ball collisions in `Billiards.tsx`, stone impacts in `ToyCurling.tsx`, and puck bounces in `Carrom.tsx`.
+- **Physics Spring Easing Tokens**:
+  - `.transition-spring-tactile` (`cubic-bezier(0.175, 0.885, 0.32, 1.275)`).
+  - `.transition-spring-overshoot` (`cubic-bezier(0.34, 1.56, 0.64, 1)`).
+
+---
+
+### Added — Thematic Scoped Typography (`index.html`, `src/index.css`)
+- **Curated Web Fonts**:
+  - `.font-serif-classic` (`Cinzel` / `Playfair Display`): Scoped to classic parlor titles, playing card pips, and historical badges in `President.tsx`.
+  - `.font-mono-digital` (`JetBrains Mono`): Scoped to score counters, Darts 501 checkout advice banner, and real-time game statistics.
+  - `.font-sans-modern` (`Outfit`): Modern clean baseline for primary navigation and controls.
+
+---
+
+## [1.7.1] - 2026-09-16 — "Performance & Architecture Overhaul: Dynamic Code-Splitting & Unified Deck Engine"
+
+### Enhanced & Optimized — Dynamic Code-Splitting (`src/App.tsx`)
+- **Bundle Monolith Elimination via `React.lazy()`**:
+  - Replaced all 26 static game imports with dynamic `React.lazy()` loaders.
+  - Main bundle size reduced by ~47% (598 kB down to 323 kB minified; gzip down to 94.9 kB), eliminating Vite large chunk warnings.
+  - Each game is compiled into an isolated 4 kB – 17 kB asynchronous chunk downloaded only when selected by the player.
+- **Clubhouse Tactile Suspense Fallback**:
+  - Implemented `<GameLoadingFallback>` rendered during asynchronous chunk loads.
+  - Features procedural dice spinner, dark walnut card elevation, and gold typography that blends seamlessly into the tabletop atmosphere.
+
+---
+
+### Added — Unified Deck & Shuffling Engine (`src/utils/deck.ts`)
+- **Unbiased Fisher-Yates Shuffler (`shuffleDeck`)**:
+  - Replaced biased `sort(() => Math.random() - 0.5)` algorithms across the entire codebase with the mathematically rigorous Fisher-Yates shuffle.
+- **Card Domain Types & Utilities**:
+  - Consolidated `StandardSuit`, `StandardRankLabel`, `STANDARD_SUITS`, `SUIT_SYMBOLS`, and `SUIT_NAMES`.
+  - Added `dealCards()` for multi-hand deal partitioning and undealt reserve extraction.
+  - Added `createStandard52Deck()` with deterministic card IDs and `isRedSuit()` color detection.
+- **Refactored Card Games**:
+  - `President.tsx`: Integrated `shuffleDeck()`, `dealCards()`, and shared suit constants.
+  - `LastCard.tsx`: Integrated `shuffleDeck()` for initial deal and discard recycling, plus `dealCards()`.
+  - `Speed.tsx`: Swapped internal manual shuffler and deal slicing for `shuffleDeck()` and `dealCards()`.
+  - `Matching.tsx`: Swapped manual shuffle loop for `shuffleDeck()`.
+  - `Hanafuda.tsx`: Eliminated biased `sort()` in favor of `shuffleDeck()` and `dealCards()`.
+  - `RiichiMahjong.tsx`: Eliminated biased `sort()` in favor of `shuffleDeck()` and `dealCards()`.
+
+---
+
 ## [1.7.0] - 2026-09-16 — "Eastern & Western Classics Expansion: Hanafuda, President, Last Card & Riichi Mahjong"
 
 ### Added — Hanafuda: Koi-Koi (`src/games/Hanafuda.tsx`)

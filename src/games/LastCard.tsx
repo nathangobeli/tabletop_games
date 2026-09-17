@@ -11,7 +11,16 @@ import {
   triggerHaptic,
 } from '../utils/feedback';
 
-export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs';
+import {
+  shuffleDeck,
+  dealCards,
+  SUIT_SYMBOLS,
+  SUIT_NAMES,
+  STANDARD_SUITS,
+  type StandardSuit,
+} from '../utils/deck';
+
+export type Suit = StandardSuit;
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
 
 export interface LastCardItem {
@@ -22,22 +31,10 @@ export interface LastCardItem {
   rotationJitter?: number;
 }
 
-const SUITS: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
+const SUITS: Suit[] = [...STANDARD_SUITS];
 const RANKS: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
-const SUIT_SYMBOLS: Record<Suit, string> = {
-  spades: '♠',
-  hearts: '♥',
-  diamonds: '♦',
-  clubs: '♣',
-};
-
-const SUIT_NAMES: Record<Suit, string> = {
-  spades: 'Spades',
-  hearts: 'Hearts',
-  diamonds: 'Diamonds',
-  clubs: 'Clubs',
-};
+export { SUIT_SYMBOLS, SUIT_NAMES };
 
 export const CREATE_LAST_CARD_DECK = (): LastCardItem[] => {
   const deck: LastCardItem[] = [];
@@ -151,23 +148,22 @@ export const LastCard: React.FC = () => {
 
   // Initialize Game
   const resetGame = useCallback(() => {
-    const deck = CREATE_LAST_CARD_DECK().sort(() => Math.random() - 0.5);
-
-    const p1 = deck.slice(0, 7);
-    const p2 = deck.slice(7, 14);
+    const deck = shuffleDeck(CREATE_LAST_CARD_DECK());
+    const { hands, remaining: undealt } = dealCards(deck, [7, 7]);
+    const [p1, p2] = hands;
 
     // Find non-action starter card
-    let startIdx = 14;
+    let startIdx = 0;
     while (
-      startIdx < deck.length &&
-      (deck[startIdx].rank === '8' || deck[startIdx].rank === '2' || deck[startIdx].rank === 'A' || deck[startIdx].rank === 'J')
+      startIdx < undealt.length &&
+      (undealt[startIdx].rank === '8' || undealt[startIdx].rank === '2' || undealt[startIdx].rank === 'A' || undealt[startIdx].rank === 'J')
     ) {
       startIdx++;
     }
-    const starter = deck[startIdx] || deck[14];
+    const starter = undealt[startIdx] || undealt[0];
     starter.rotationJitter = 0;
 
-    const remainingDeck = deck.filter((_, idx) => idx !== startIdx && idx >= 14);
+    const remainingDeck = undealt.filter((_, idx) => idx !== startIdx);
 
     setDrawPile(remainingDeck);
     setDiscardPile([starter]);
@@ -224,7 +220,7 @@ export const LastCard: React.FC = () => {
       if (currentDeck.length < count && currentDiscards.length > 1) {
         // Reshuffle discards except top
         const top = currentDiscards.pop()!;
-        const recycled = currentDiscards.sort(() => Math.random() - 0.5);
+        const recycled = shuffleDeck(currentDiscards);
         currentDeck = [...currentDeck, ...recycled];
         currentDiscards = [top];
         setDiscardPile(currentDiscards);

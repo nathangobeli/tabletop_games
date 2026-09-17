@@ -4,6 +4,7 @@ import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCardFlipSound, playCaptureSound } from '../utils/feedback';
+import { shuffleDeck } from '../utils/deck';
 
 interface CardItem {
   id: number;
@@ -66,13 +67,7 @@ export const Matching: React.FC = () => {
       });
     });
 
-    // Fisher-Yates Shuffle
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-
-    setCards(deck);
+    setCards(shuffleDeck(deck));
     setFlippedIndices([]);
     setIsProcessing(false);
     setTurn(1);

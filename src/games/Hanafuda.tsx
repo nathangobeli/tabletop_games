@@ -9,6 +9,7 @@ import {
   playVictorySound,
   triggerHaptic,
 } from '../utils/feedback';
+import { shuffleDeck, dealCards } from '../utils/deck';
 
 export type HanafudaMonth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 export type CardType = 'bright' | 'animal' | 'ribbon' | 'chaff';
@@ -316,12 +317,9 @@ export const Hanafuda: React.FC = () => {
 
   // Initialize Game
   const resetGame = useCallback(() => {
-    const shuffled = [...HANAFUDA_DECK].sort(() => Math.random() - 0.5);
-
-    const p1 = shuffled.slice(0, 8);
-    const p2 = shuffled.slice(8, 16);
-    const fld = shuffled.slice(16, 24);
-    const remainingDeck = shuffled.slice(24);
+    const shuffled = shuffleDeck(HANAFUDA_DECK);
+    const { hands, remaining: remainingDeck } = dealCards(shuffled, [8, 8, 8]);
+    const [p1, p2, fld] = hands;
 
     setDeck(remainingDeck);
     setHandP1(p1);

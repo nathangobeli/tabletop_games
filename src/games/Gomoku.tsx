@@ -1,12 +1,22 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { GameHeader } from '../components/GameHeader';
+import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { RemoteDuelModal } from '../components/RemoteDuelModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
+import { requestAIMove } from '../utils/aiClient';
+import { multiplayer } from '../utils/multiplayer';
 
 const BOARD_SIZE = 15;
 type CellValue = 0 | 1 | 2; // 0 = empty, 1 = P1 (Black), 2 = P2 (White)
+
+interface GomokuSnapshot {
+  grid: CellValue[][];
+  turn: PlayerNumber;
+  lastMove: [number, number] | null;
+  statusMessage: string;
+}
 
 export const Gomoku: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
@@ -20,21 +30,35 @@ export const Gomoku: React.FC = () => {
   const [hoverPos, setHoverPos] = useState<[number, number] | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('Player 1 (Black): Tap an intersection to place stone');
   const [lastMove, setLastMove] = useState<[number, number] | null>(null);
+  const [isThinking, setIsThinking] = useState<boolean>(false);
+
+  // Modes & Multiplayer
+  const [gameMode, setGameMode] = useState<GamePlayMode>('pass-and-play');
+  const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
+
+  // History stack for Undo
+  const [history, setHistory] = useState<GomokuSnapshot[]>([]);
 
   // Score match counts
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
 
-  const resetGame = useCallback(() => {
+  const resetGame = useCallback((isRemote = false) => {
     setGrid(Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0)));
     setTurn(1);
     setWinner(null);
     setWinningLine([]);
     setHoverPos(null);
     setLastMove(null);
+    setIsThinking(false);
+    setHistory([]);
     setStatusMessage('Player 1 (Black): Tap an intersection to place stone');
     setGameStatus('active');
-  }, [setGameStatus]);
+
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({ type: 'RESTART' });
+    }
+  }, [gameMode, setGameStatus]);
 
   // Check 5 consecutive stones in 4 vectors
   const checkWinAt = (board: CellValue[][], r: number, c: number, player: CellValue): [number, number][] | null => {
@@ -83,12 +107,14 @@ export const Gomoku: React.FC = () => {
     return null;
   };
 
-  const handleIntersectionClick = useCallback((r: number, c: number) => {
-    if (winner !== null) return;
-    if (grid[r][c] !== 0) {
-      triggerHaptic('light');
-      setStatusMessage('Intersection already occupied!');
-      return;
+  const executeStonePlacement = useCallback((r: number, c: number, isRemote = false) => {
+    if (winner !== null || grid[r][c] !== 0) return;
+
+    // Push snapshot to history
+    setHistory((prev) => [...prev, { grid, turn, lastMove, statusMessage }]);
+
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({ type: 'MOVE', payload: { r, c } });
     }
 
     triggerHaptic('medium');
@@ -105,7 +131,8 @@ export const Gomoku: React.FC = () => {
       playCaptureSound();
       setWinner(turn);
       setWinningLine(winSequence);
-      setStatusMessage(`🎉 Player ${turn} (${turn === 1 ? 'Black' : 'White'}) connects 5 and wins!`);
+      const winnerName = turn === 1 ? 'Player 1 (Black)' : gameMode === 'vs-cpu' ? '🤖 CPU (White)' : 'Player 2 (White)';
+      setStatusMessage(`🎉 ${winnerName} connects 5 and wins!`);
       setGameStatus('finished');
 
       if (turn === 1) setScoreP1((prev) => prev + 1);
@@ -122,11 +149,125 @@ export const Gomoku: React.FC = () => {
       return;
     }
 
-    // Smooth inline turn progression without modal interruption
+    // Advance turn
     const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
     setTurn(nextPlayer);
-    setStatusMessage(`Player ${nextPlayer} (${nextPlayer === 1 ? 'Black' : 'White'}): Tap an intersection to place stone`);
-  }, [grid, turn, winner, setGameStatus]);
+
+    if (gameMode === 'vs-cpu' && nextPlayer === 2) {
+      setStatusMessage('🤖 CPU is scanning threat vectors...');
+    } else {
+      setStatusMessage(`Player ${nextPlayer} (${nextPlayer === 1 ? 'Black' : 'White'}): Tap an intersection to place stone`);
+    }
+  }, [grid, turn, winner, lastMove, statusMessage, gameMode, setGameStatus]);
+
+  const handleIntersectionClick = useCallback((r: number, c: number) => {
+    if (winner !== null || isThinking) return;
+
+    if (gameMode === 'remote') {
+      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
+      if (turn !== localPlayer) {
+        setStatusMessage('Waiting for remote opponent...');
+        triggerHaptic('light');
+        return;
+      }
+    }
+
+    if (gameMode === 'vs-cpu' && turn === 2) return;
+
+    if (grid[r][c] !== 0) {
+      triggerHaptic('light');
+      setStatusMessage('Intersection already occupied!');
+      return;
+    }
+
+    executeStonePlacement(r, c, false);
+  }, [winner, isThinking, gameMode, turn, grid, executeStonePlacement]);
+
+  // Undo Handler
+  const handleUndo = useCallback((isRemoteTrigger = false) => {
+    if (isThinking || history.length === 0) return;
+
+    triggerHaptic('medium');
+    playWoodClackSound();
+
+    if (gameMode === 'vs-cpu') {
+      const rollbackSteps = history.length >= 2 ? 2 : 1;
+      const targetIndex = history.length - rollbackSteps;
+      const targetState = history[targetIndex];
+
+      setGrid(targetState.grid);
+      setTurn(targetState.turn);
+      setLastMove(targetState.lastMove);
+      setStatusMessage(targetState.statusMessage);
+      setWinner(null);
+      setWinningLine([]);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setGameStatus('active');
+    } else {
+      const targetIndex = history.length - 1;
+      const targetState = history[targetIndex];
+
+      setGrid(targetState.grid);
+      setTurn(targetState.turn);
+      setLastMove(targetState.lastMove);
+      setStatusMessage(targetState.statusMessage);
+      setWinner(null);
+      setWinningLine([]);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setGameStatus('active');
+
+      if (gameMode === 'remote' && !isRemoteTrigger) {
+        multiplayer.send({ type: 'UNDO' });
+      }
+    }
+  }, [isThinking, history, gameMode, setGameStatus]);
+
+  // AI CPU Move Trigger (Web Worker Threat-Space Minimax)
+  useEffect(() => {
+    if (gameMode !== 'vs-cpu' || turn !== 2 || winner !== null || isThinking) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsThinking(true);
+    setStatusMessage('🤖 CPU is thinking...');
+
+    const timer = setTimeout(async () => {
+      try {
+        const move = await requestAIMove<[number, number]>('gomoku', grid, 2);
+        if (!cancelled && move && Array.isArray(move) && move.length === 2) {
+          setIsThinking(false);
+          executeStonePlacement(move[0], move[1], false);
+        } else if (!cancelled) {
+          setIsThinking(false);
+        }
+      } catch (err) {
+        console.error('Gomoku CPU move calculation failed:', err);
+        if (!cancelled) setIsThinking(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setIsThinking(false);
+    };
+  }, [gameMode, turn, winner, grid, executeStonePlacement]);
+
+  // WebRTC Remote Peer Listener
+  useEffect(() => {
+    const unbind = multiplayer.onMessage((msg) => {
+      if (msg.type === 'MOVE' && msg.payload && typeof msg.payload.r === 'number' && typeof msg.payload.c === 'number') {
+        executeStonePlacement(msg.payload.r, msg.payload.c, true);
+      } else if (msg.type === 'RESTART') {
+        resetGame(true);
+      } else if (msg.type === 'UNDO') {
+        handleUndo(true);
+      }
+    });
+
+    return unbind;
+  }, [executeStonePlacement, resetGame, handleUndo]);
 
   // Visual star points (hoshi) on 15x15 board: (3,3), (3,11), (7,7), (11,3), (11,11)
   const isStarPoint = (r: number, c: number) => {
@@ -149,6 +290,8 @@ export const Gomoku: React.FC = () => {
     return Array.from({ length: BOARD_SIZE }, (_, i) => (i + 1) * step);
   }, [step]);
 
+  const canUndo = history.length > (gameMode === 'vs-cpu' ? 1 : 0) && !isThinking;
+
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden relative select-none">
       <GameHeader
@@ -158,9 +301,18 @@ export const Gomoku: React.FC = () => {
         scoreP1={scoreP1}
         scoreP2={scoreP2}
         p1Label="P1 (Black)"
-        p2Label="P2 (White)"
-        onRestart={resetGame}
+        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (White)' : 'P2 (White)'}
+        onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
+        gameMode={gameMode}
+        onToggleGameMode={(m) => {
+          setGameMode(m);
+          resetGame(false);
+        }}
+        supportedModes={['pass-and-play', 'vs-cpu', 'remote']}
+        onUndo={handleUndo}
+        canUndo={canUndo}
+        onOpenRemoteModal={() => setShowRemoteModal(true)}
       />
 
       {/* Main Bamboo Board Area - Responsive on iPhone, iPad, PC */}
@@ -351,10 +503,16 @@ export const Gomoku: React.FC = () => {
               p2Value: winner === 2 ? '5-in-a-Row' : '-',
             },
           ]}
-          onRestart={resetGame}
+          onRestart={() => resetGame(false)}
           onMenu={resetToMenu}
         />
       )}
+
+      {/* WebRTC Remote Duel Modal */}
+      <RemoteDuelModal
+        isOpen={showRemoteModal}
+        onClose={() => setShowRemoteModal(false)}
+      />
     </div>
   );
 };

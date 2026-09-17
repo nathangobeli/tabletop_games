@@ -42,6 +42,32 @@ export const triggerHaptic = (type: HapticType = 'light'): void => {
 };
 
 /**
+ * Velocity-scaled collision haptic feedback:
+ * Maps collision impact velocity to tactile vibration amplitude and patterns.
+ * - Soft rolls (< 35% maxSpeed): Subtle 8ms tap
+ * - Medium impacts (35% - 70% maxSpeed): Crisp 18ms pulse
+ * - Heavy smashes (> 70% maxSpeed): Punchy multi-pulse [25ms, 15ms, 35ms]
+ */
+export const triggerCollisionHaptic = (speed: number, maxSpeed = 15): void => {
+  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
+
+  const ratio = Math.max(0, Math.min(speed / maxSpeed, 1));
+  if (ratio < 0.1) return; // Discard micro-collisions / rest contacts
+
+  try {
+    if (ratio < 0.35) {
+      navigator.vibrate(8);
+    } else if (ratio < 0.7) {
+      navigator.vibrate(18);
+    } else {
+      navigator.vibrate([25, 15, 35]);
+    }
+  } catch {
+    // Silently handle blocked programmatic vibration
+  }
+};
+
+/**
  * Synthetic tap sound: Short 600Hz sine-wave pop (15ms)
  */
 export const playTapSound = (): void => {

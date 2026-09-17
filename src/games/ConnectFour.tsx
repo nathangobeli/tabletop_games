@@ -1,9 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { GameHeader } from '../components/GameHeader';
+import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { RemoteDuelModal } from '../components/RemoteDuelModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playBounceSound, playPlasticPlinkSound } from '../utils/feedback';
+import { requestAIMove } from '../utils/aiClient';
+import { multiplayer } from '../utils/multiplayer';
 
 // 7 columns x 6 rows
 const COLS = 7;
@@ -11,6 +14,13 @@ const ROWS = 6;
 
 type CellValue = 0 | 1 | 2;
 type WinningPosition = [number, number]; // [row, col]
+
+interface C4Snapshot {
+  grid: CellValue[][];
+  turn: PlayerNumber;
+  lastDropPos: { row: number; col: number } | null;
+  statusMessage: string;
+}
 
 export const ConnectFour: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
@@ -26,12 +36,20 @@ export const ConnectFour: React.FC = () => {
   const [lastDropPos, setLastDropPos] = useState<{ row: number; col: number } | null>(null);
   const [fallingDisc, setFallingDisc] = useState<{ row: number; col: number; player: PlayerNumber; durationMs: number } | null>(null);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [isThinking, setIsThinking] = useState<boolean>(false);
+
+  // Modes & Multiplayer
+  const [gameMode, setGameMode] = useState<GamePlayMode>('pass-and-play');
+  const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
+
+  // State History for Undo
+  const [history, setHistory] = useState<C4Snapshot[]>([]);
 
   // Live Score tracking across pass-and-play matches
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
 
-  const resetGame = useCallback(() => {
+  const resetGame = useCallback((isRemote = false) => {
     setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
     setTurn(1);
     setWinner(null);
@@ -40,8 +58,14 @@ export const ConnectFour: React.FC = () => {
     setLastDropPos(null);
     setFallingDisc(null);
     setIsAnimating(false);
+    setIsThinking(false);
+    setHistory([]);
     setGameStatus('active');
-  }, [setGameStatus]);
+
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({ type: 'RESTART' });
+    }
+  }, [gameMode, setGameStatus]);
 
   // Check 4-in-a-row in all 4 vectors from a given drop position
   const checkWinFrom = (
@@ -99,7 +123,7 @@ export const ConnectFour: React.FC = () => {
     return currentGrid[0].every((cell) => cell !== 0);
   };
 
-  const handleColumnClick = useCallback((colIndex: number) => {
+  const executeDrop = useCallback((colIndex: number, isRemote = false) => {
     if (winner !== null || isAnimating) return;
 
     // Check if column is already full (top cell occupied)
@@ -119,6 +143,14 @@ export const ConnectFour: React.FC = () => {
     }
 
     if (landingRow === -1) return;
+
+    // Push current state to undo history
+    setHistory((prev) => [...prev, { grid, turn, lastDropPos, statusMessage }]);
+
+    // Send over WebRTC if in remote mode and triggered locally
+    if (gameMode === 'remote' && !isRemote) {
+      multiplayer.send({ type: 'MOVE', payload: { col: colIndex } });
+    }
 
     // 1. Lock user inputs immediately while piece is in flight
     setIsAnimating(true);
@@ -162,7 +194,8 @@ export const ConnectFour: React.FC = () => {
       if (winSequence) {
         setWinner(currentTurn);
         setWinningCells(winSequence);
-        setStatusMessage(`🎉 Player ${currentTurn} connects 4 and wins!`);
+        const winTitle = currentTurn === 1 ? 'Player 1 (Cobalt)' : gameMode === 'vs-cpu' ? '🤖 CPU' : 'Player 2 (Crimson)';
+        setStatusMessage(`🎉 ${winTitle} connects 4 and wins!`);
         setGameStatus('finished');
         setIsAnimating(false);
 
@@ -184,13 +217,128 @@ export const ConnectFour: React.FC = () => {
       const nextPlayer: PlayerNumber = currentTurn === 1 ? 2 : 1;
       setTurn(nextPlayer);
       setIsAnimating(false);
-      setStatusMessage(`Turn: Player ${nextPlayer} (${nextPlayer === 1 ? 'Cobalt' : 'Crimson'})`);
+
+      if (gameMode === 'vs-cpu' && nextPlayer === 2) {
+        setStatusMessage('🤖 CPU is contemplating next drop...');
+      } else {
+        setStatusMessage(`Turn: Player ${nextPlayer} (${nextPlayer === 1 ? 'Cobalt' : 'Crimson'})`);
+      }
     }, fallDurationMs + 40);
-  }, [grid, turn, winner, isAnimating, setGameStatus]);
+  }, [grid, turn, winner, isAnimating, lastDropPos, statusMessage, gameMode, setGameStatus]);
+
+  const handleColumnClick = useCallback((colIndex: number) => {
+    if (winner !== null || isAnimating || isThinking) return;
+
+    // Remote turn check
+    if (gameMode === 'remote') {
+      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
+      if (turn !== localPlayer) {
+        setStatusMessage('Waiting for remote opponent...');
+        triggerHaptic('light');
+        return;
+      }
+    }
+
+    // CPU turn lock
+    if (gameMode === 'vs-cpu' && turn === 2) return;
+
+    executeDrop(colIndex, false);
+  }, [winner, isAnimating, isThinking, gameMode, turn, executeDrop]);
+
+  // Undo Handler
+  const handleUndo = useCallback((isRemoteTrigger = false) => {
+    if (isAnimating || isThinking || history.length === 0) return;
+
+    triggerHaptic('medium');
+    playBounceSound(420);
+
+    if (gameMode === 'vs-cpu') {
+      const rollbackSteps = history.length >= 2 ? 2 : 1;
+      const targetIndex = history.length - rollbackSteps;
+      const targetState = history[targetIndex];
+
+      setGrid(targetState.grid);
+      setTurn(targetState.turn);
+      setLastDropPos(targetState.lastDropPos);
+      setStatusMessage(targetState.statusMessage);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setWinner(null);
+      setWinningCells([]);
+      setGameStatus('active');
+    } else {
+      const targetIndex = history.length - 1;
+      const targetState = history[targetIndex];
+
+      setGrid(targetState.grid);
+      setTurn(targetState.turn);
+      setLastDropPos(targetState.lastDropPos);
+      setStatusMessage(targetState.statusMessage);
+      setHistory((prev) => prev.slice(0, targetIndex));
+      setWinner(null);
+      setWinningCells([]);
+      setGameStatus('active');
+
+      if (gameMode === 'remote' && !isRemoteTrigger) {
+        multiplayer.send({ type: 'UNDO' });
+      }
+    }
+  }, [isAnimating, isThinking, history, gameMode, setGameStatus]);
+
+  // AI CPU Move Trigger (Web Worker Minimax)
+  useEffect(() => {
+    if (gameMode !== 'vs-cpu' || turn !== 2 || winner !== null || isAnimating || isThinking) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsThinking(true);
+    setStatusMessage('🤖 CPU is thinking...');
+
+    const timer = setTimeout(async () => {
+      try {
+        const bestCol = await requestAIMove<number>('connect-four', grid, 2, 'medium');
+        if (!cancelled && bestCol !== null && bestCol !== undefined && bestCol >= 0) {
+          setIsThinking(false);
+          executeDrop(bestCol, false);
+        } else if (!cancelled) {
+          // Fallback first available column
+          const fallbackCol = [3, 2, 4, 1, 5, 0, 6].find((c) => grid[0][c] === 0) ?? 0;
+          setIsThinking(false);
+          executeDrop(fallbackCol, false);
+        }
+      } catch (err) {
+        console.error('CPU Move computation failed:', err);
+        if (!cancelled) setIsThinking(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setIsThinking(false);
+    };
+  }, [gameMode, turn, winner, isAnimating, grid, executeDrop]);
+
+  // WebRTC Remote Peer Listener
+  useEffect(() => {
+    const unbind = multiplayer.onMessage((msg) => {
+      if (msg.type === 'MOVE' && typeof msg.payload?.col === 'number') {
+        executeDrop(msg.payload.col, true);
+      } else if (msg.type === 'RESTART') {
+        resetGame(true);
+      } else if (msg.type === 'UNDO') {
+        handleUndo(true);
+      }
+    });
+
+    return unbind;
+  }, [executeDrop, resetGame, handleUndo]);
 
   const isWinningCell = (r: number, c: number) => {
     return winningCells.some(([wr, wc]) => wr === r && wc === c);
   };
+
+  const canUndo = history.length > (gameMode === 'vs-cpu' ? 1 : 0) && !isAnimating && !isThinking;
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden">
@@ -201,9 +349,18 @@ export const ConnectFour: React.FC = () => {
         scoreP1={scoreP1}
         scoreP2={scoreP2}
         p1Label="P1 (Cobalt)"
-        p2Label="P2 (Crimson)"
-        onRestart={resetGame}
+        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (Crimson)' : 'P2 (Crimson)'}
+        onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
+        gameMode={gameMode}
+        onToggleGameMode={(m) => {
+          setGameMode(m);
+          resetGame(false);
+        }}
+        supportedModes={['pass-and-play', 'vs-cpu', 'remote']}
+        onUndo={handleUndo}
+        canUndo={canUndo}
+        onOpenRemoteModal={() => setShowRemoteModal(true)}
       />
 
       {/* Main Connect Four Vertical Rack */}
@@ -218,12 +375,20 @@ export const ConnectFour: React.FC = () => {
             }`}
           >
             <span
-              className={`w-3.5 h-3.5 rounded-full shadow-sm animate-pulse ${
+              className={`w-3.5 h-3.5 rounded-full shadow-sm ${
+                isThinking ? 'animate-spin bg-amber-400' : 'animate-pulse'
+              } ${
                 turn === 1 ? 'bg-player-1 ring-2 ring-blue-300' : 'bg-player-2 ring-2 ring-rose-300'
               }`}
             />
             <span className="text-xs font-black uppercase tracking-wider">
-              {winner !== null ? 'Game Over' : turn === 1 ? "Player 1's Turn (Cobalt)" : "Player 2's Turn (Crimson)"}
+              {winner !== null
+                ? 'Game Over'
+                : turn === 1
+                ? "Player 1's Turn (Cobalt)"
+                : gameMode === 'vs-cpu'
+                ? isThinking ? 'CPU is calculating...' : "CPU's Turn (Crimson)"
+                : "Player 2's Turn (Crimson)"}
             </span>
           </div>
         </div>
@@ -232,7 +397,8 @@ export const ConnectFour: React.FC = () => {
         <div className="w-full max-w-sm sm:max-w-md md:max-w-lg grid grid-cols-7 gap-1.5 sm:gap-2 px-3 mb-1.5">
           {Array.from({ length: COLS }).map((_, col) => {
             const isColFull = grid[0][col] !== 0;
-            const isDisabled = winner !== null || isColFull || isAnimating;
+            const isCpuTurn = gameMode === 'vs-cpu' && turn === 2;
+            const isDisabled = winner !== null || isColFull || isAnimating || isThinking || isCpuTurn;
             return (
               <button
                 key={col}
@@ -285,7 +451,7 @@ export const ConnectFour: React.FC = () => {
                     key={`${r}-${c}`}
                     type="button"
                     onClick={() => handleColumnClick(c)}
-                    disabled={winner !== null || isAnimating}
+                    disabled={winner !== null || isAnimating || isThinking || (gameMode === 'vs-cpu' && turn === 2)}
                     className="aspect-square rounded-full flex items-center justify-center relative focus:outline-none"
                     aria-label={`Row ${r + 1}, Col ${c + 1}`}
                   >
@@ -370,10 +536,16 @@ export const ConnectFour: React.FC = () => {
               p2Value: winner === 2 ? '4 Connected' : '-',
             },
           ]}
-          onRestart={resetGame}
+          onRestart={() => resetGame(false)}
           onMenu={resetToMenu}
         />
       )}
+
+      {/* WebRTC Remote Duel Modal */}
+      <RemoteDuelModal
+        isOpen={showRemoteModal}
+        onClose={() => setShowRemoteModal(false)}
+      />
     </div>
   );
 };
