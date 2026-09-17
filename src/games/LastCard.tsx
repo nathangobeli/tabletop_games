@@ -14,13 +14,14 @@ import {
 import {
   shuffleDeck,
   dealCards,
+  createStandardDeck,
   SUIT_SYMBOLS,
   SUIT_NAMES,
   STANDARD_SUITS,
-  type StandardSuit,
-} from '../utils/deck';
+  type CardSuit,
+} from '../utils/cards';
 
-export type Suit = StandardSuit;
+export type Suit = Extract<CardSuit, 'spades' | 'hearts' | 'diamonds' | 'clubs'>;
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
 
 export interface LastCardItem {
@@ -31,24 +32,16 @@ export interface LastCardItem {
   rotationJitter?: number;
 }
 
-const SUITS: Suit[] = [...STANDARD_SUITS];
-const RANKS: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-
 export { SUIT_SYMBOLS, SUIT_NAMES };
 
 export const CREATE_LAST_CARD_DECK = (): LastCardItem[] => {
-  const deck: LastCardItem[] = [];
-  SUITS.forEach((suit) => {
-    RANKS.forEach((rank) => {
-      deck.push({
-        id: `${suit}-${rank}-${Math.random().toString(36).slice(2, 6)}`,
-        suit,
-        rank,
-        label: rank,
-      });
-    });
-  });
-  return deck;
+  const baseCards = createStandardDeck({ idPrefix: 'lc' });
+  return baseCards.map((c) => ({
+    id: `${c.suit}-${c.rankLabel}-${Math.random().toString(36).slice(2, 6)}`,
+    suit: c.suit as Suit,
+    rank: c.rankLabel as Rank,
+    label: c.rankLabel,
+  }));
 };
 
 export const LastCardGraphic: React.FC<{

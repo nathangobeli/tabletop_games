@@ -13,12 +13,13 @@ import {
 import {
   shuffleDeck,
   dealCards,
-  SUIT_SYMBOLS as BASE_SUIT_SYMBOLS,
+  createStandardDeck,
+  SUIT_SYMBOLS,
   STANDARD_SUITS,
-  type StandardSuit,
-} from '../utils/deck';
+  type CardSuit as Suit,
+} from '../utils/cards';
 
-export type Suit = StandardSuit | 'joker';
+export type { Suit };
 export type Rank = 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 99; // 11=J, 12=Q, 13=K, 14=A, 15=2, 99=Joker
 
 export interface PlayingCard {
@@ -29,48 +30,38 @@ export interface PlayingCard {
   isJoker?: boolean;
 }
 
-const SUITS: Suit[] = [...STANDARD_SUITS];
-const RANKS: Rank[] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
-const RANK_LABELS: Record<Rank, string> = {
-  3: '3',
-  4: '4',
-  5: '5',
-  6: '6',
-  7: '7',
-  8: '8',
-  9: '9',
-  10: '10',
-  11: 'J',
-  12: 'Q',
-  13: 'K',
-  14: 'A',
-  15: '2',
-  99: '★',
-};
-
-const SUIT_SYMBOLS: Record<Suit, string> = {
-  ...BASE_SUIT_SYMBOLS,
-  joker: '🃏',
+// President evaluation order: 3 is lowest (3), Ace is high (14), 2 is highest (15)
+const PRESIDENT_RANK_ORDER: Record<number, number> = {
+  1: 14, // Ace
+  2: 15, // Two
+  3: 3,
+  4: 4,
+  5: 5,
+  6: 6,
+  7: 7,
+  8: 8,
+  9: 9,
+  10: 10,
+  11: 11, // Jack
+  12: 12, // Queen
+  13: 13, // King
 };
 
 export const CREATE_PRESIDENT_DECK = (): PlayingCard[] => {
-  const deck: PlayingCard[] = [];
-  SUITS.forEach((suit) => {
-    RANKS.forEach((rank) => {
-      deck.push({
-        id: `${suit}-${rank}`,
-        suit,
-        rank,
-        label: RANK_LABELS[rank],
-      });
-    });
+  const baseCards = createStandardDeck({
+    idPrefix: 'pres',
+    includeJokers: true,
+    jokerCount: 2,
+    customRankOrder: PRESIDENT_RANK_ORDER,
   });
 
-  // 2 Jokers
-  deck.push({ id: 'joker-1', suit: 'joker', rank: 99, label: 'JOKER', isJoker: true });
-  deck.push({ id: 'joker-2', suit: 'joker', rank: 99, label: 'JOKER', isJoker: true });
-  return deck;
+  return baseCards.map((c) => ({
+    id: c.id,
+    suit: c.suit as Suit,
+    rank: (c.isJoker ? 99 : c.value) as Rank,
+    label: c.isJoker ? 'JOKER' : c.rankLabel,
+    isJoker: c.isJoker,
+  }));
 };
 
 export interface PlayedCombination {

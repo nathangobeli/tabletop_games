@@ -4,7 +4,14 @@ import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound, playErrorBuzz } from '../utils/feedback';
-import { shuffleDeck, dealCards, STANDARD_RANK_LABELS } from '../utils/deck';
+import {
+  shuffleDeck,
+  dealCards,
+  createStandardDeck,
+  STANDARD_RANK_LABELS,
+  SUIT_SYMBOLS,
+  type CardSuit,
+} from '../utils/cards';
 
 type SuitSymbol = '♠' | '♥' | '♦' | '♣';
 
@@ -13,8 +20,6 @@ interface Card {
   value: number; // 1 to 13 (1=Ace, 11=Jack, 12=Queen, 13=King)
   suit: SuitSymbol;
 }
-
-const SUITS: SuitSymbol[] = ['♠', '♥', '♦', '♣'];
 
 const getRankLabel = (val: number): string => {
   return STANDARD_RANK_LABELS[val] || String(val);
@@ -31,14 +36,14 @@ export const Speed: React.FC = () => {
 
   // Generate shuffled full 52-card deck
   const generateDeck = (): Card[] => {
-    const deck: Card[] = [];
-    let id = 1;
-    for (let v = 1; v <= 13; v++) {
-      for (const suit of SUITS) {
-        deck.push({ id: id++, value: v, suit });
-      }
-    }
-    return shuffleDeck(deck);
+    const baseCards = createStandardDeck({ idPrefix: 'speed' });
+    let numId = 1;
+    const cards: Card[] = baseCards.map((c) => ({
+      id: numId++,
+      value: c.value,
+      suit: SUIT_SYMBOLS[c.suit as CardSuit] as SuitSymbol,
+    }));
+    return shuffleDeck(cards);
   };
 
   // Initial deal:

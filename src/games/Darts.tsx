@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useReducer } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -11,7 +11,15 @@ import {
 
 export type DartGameMode = '501' | 'cricket';
 
-interface ThrownDart {
+export type DartPhase =
+  | 'POSITIONING'     // Stage 1: Dragging the base aim target zone
+  | 'TIMING'          // Stage 2: Aim locked; reticle harmonic drift active; timing throw
+  | 'IN_FLIGHT'       // Stage 3: Dart flying to board; all user input strictly blocked
+  | 'BUST'            // 501 overshot or left at 1; bust message active
+  | 'TURN_SWITCHING'  // 3 darts thrown; settling board before next player
+  | 'GAME_OVER';      // Victory!
+
+export interface ThrownDart {
   x: number;
   y: number;
   score: number;
@@ -19,7 +27,7 @@ interface ThrownDart {
   multiplier: number;
 }
 
-interface CricketSectorState {
+export interface CricketSectorState {
   p1Marks: number; // 0..3
   p2Marks: number; // 0..3
 }
@@ -52,38 +60,337 @@ export const getCheckoutGuide = (score: number, isDoubleOut: boolean): string | 
   return null;
 };
 
+// Calculate Dartboard Score from impact coordinates
+export const calculateHit = (x: number, y: number): { score: number; label: string; multiplier: number; baseNumber: number } => {
+  const dx = x - CENTER;
+  const dy = y - CENTER;
+  const r = Math.sqrt(dx * dx + dy * dy);
+
+  if (r > R_DOUBLE_OUTER) {
+    return { score: 0, label: 'MISS', multiplier: 0, baseNumber: 0 };
+  }
+
+  if (r <= R_DOUBLE_BULL) {
+    return { score: 50, label: 'D-BULL (50)', multiplier: 2, baseNumber: 25 };
+  }
+
+  if (r <= R_SINGLE_BULL) {
+    return { score: 25, label: 'BULL (25)', multiplier: 1, baseNumber: 25 };
+  }
+
+  // Determine Sector
+  let angle = Math.atan2(dy, dx); // -PI to PI
+  let normalized = angle + Math.PI / 2 + Math.PI / 20;
+  while (normalized < 0) normalized += Math.PI * 2;
+  while (normalized >= Math.PI * 2) normalized -= Math.PI * 2;
+
+  const sectorIdx = Math.floor(normalized / (Math.PI / 10));
+  const sectorVal = SECTORS[sectorIdx % 20];
+
+  if (r >= R_TRIPLE_INNER && r <= R_TRIPLE_OUTER) {
+    return { score: sectorVal * 3, label: `T${sectorVal} (${sectorVal * 3})`, multiplier: 3, baseNumber: sectorVal };
+  }
+
+  if (r >= R_DOUBLE_INNER && r <= R_DOUBLE_OUTER) {
+    return { score: sectorVal * 2, label: `D${sectorVal} (${sectorVal * 2})`, multiplier: 2, baseNumber: sectorVal };
+  }
+
+  return { score: sectorVal, label: `S${sectorVal}`, multiplier: 1, baseNumber: sectorVal };
+};
+
+// =======================================================
+// State Machine Definition & Reducer
+// =======================================================
+
+export interface DartState {
+  phase: DartPhase;
+  mode: DartGameMode;
+  doubleOut: boolean;
+  turn: PlayerNumber;
+  winner: PlayerNumber | null;
+  dartsLeftInTurn: number;
+  statusMessage: string;
+  score501P1: number;
+  score501P2: number;
+  turnStartScore501: number;
+  cricketState: Record<number, CricketSectorState>;
+  cricketPointsP1: number;
+  cricketPointsP2: number;
+  pinnedDarts: ThrownDart[];
+}
+
+export type DartAction =
+  | { type: 'SET_MODE'; mode: DartGameMode }
+  | { type: 'TOGGLE_DOUBLE_OUT' }
+  | { type: 'LOCK_AIM' }
+  | { type: 'UNLOCK_AIM' }
+  | { type: 'START_THROW' }
+  | { type: 'DART_LANDED'; dart: ThrownDart; hit: ReturnType<typeof calculateHit> }
+  | { type: 'ADVANCE_TURN' }
+  | { type: 'RESET_GAME'; mode?: DartGameMode };
+
+const createInitialCricketState = (): Record<number, CricketSectorState> => ({
+  20: { p1Marks: 0, p2Marks: 0 },
+  19: { p1Marks: 0, p2Marks: 0 },
+  18: { p1Marks: 0, p2Marks: 0 },
+  17: { p1Marks: 0, p2Marks: 0 },
+  16: { p1Marks: 0, p2Marks: 0 },
+  15: { p1Marks: 0, p2Marks: 0 },
+  25: { p1Marks: 0, p2Marks: 0 },
+});
+
+const createInitialDartState = (mode: DartGameMode = '501'): DartState => ({
+  phase: 'POSITIONING',
+  mode,
+  doubleOut: true,
+  turn: 1,
+  winner: null,
+  dartsLeftInTurn: 3,
+  statusMessage: 'Player 1: Stage 1 - Drag target zone to aim, then lock aim!',
+  score501P1: 501,
+  score501P2: 501,
+  turnStartScore501: 501,
+  cricketState: createInitialCricketState(),
+  cricketPointsP1: 0,
+  cricketPointsP2: 0,
+  pinnedDarts: [],
+});
+
+const dartReducer = (state: DartState, action: DartAction): DartState => {
+  switch (action.type) {
+    case 'SET_MODE':
+      return createInitialDartState(action.mode);
+
+    case 'TOGGLE_DOUBLE_OUT':
+      return {
+        ...state,
+        doubleOut: !state.doubleOut,
+      };
+
+    case 'LOCK_AIM': {
+      // Guard: only transition from POSITIONING
+      if (state.phase !== 'POSITIONING') return state;
+      return {
+        ...state,
+        phase: 'TIMING',
+        statusMessage: 'Aim locked! Time the drift sway and tap THROW DART.',
+      };
+    }
+
+    case 'UNLOCK_AIM': {
+      // Guard: only transition from TIMING
+      if (state.phase !== 'TIMING') return state;
+      return {
+        ...state,
+        phase: 'POSITIONING',
+        statusMessage: 'Stage 1: Drag target circle to reposition aim.',
+      };
+    }
+
+    case 'START_THROW': {
+      // Guard: strictly cannot throw unless in TIMING phase with darts remaining
+      if (state.phase !== 'TIMING' || state.dartsLeftInTurn <= 0 || state.winner !== null) {
+        return state;
+      }
+      return {
+        ...state,
+        phase: 'IN_FLIGHT',
+        statusMessage: '⏳ Dart in flight...',
+      };
+    }
+
+    case 'DART_LANDED': {
+      // Guard: only handle landing when in flight
+      if (state.phase !== 'IN_FLIGHT') return state;
+
+      const { dart, hit } = action;
+      const nextPinned = [...state.pinnedDarts, dart];
+      const remainingDarts = state.dartsLeftInTurn - 1;
+
+      // 1. Scoring Logic: 501 Countdown
+      if (state.mode === '501') {
+        const currentScore = state.turn === 1 ? state.score501P1 : state.score501P2;
+        const rem = currentScore - dart.score;
+
+        let isBust = false;
+        let bustExplanation = '';
+
+        if (rem < 0) {
+          isBust = true;
+          bustExplanation = `Overshot score (${rem} remaining).`;
+        } else if (rem === 1 && state.doubleOut) {
+          isBust = true;
+          bustExplanation = `Cannot leave 1 remaining in Double Out.`;
+        } else if (rem === 0) {
+          if (state.doubleOut && dart.multiplier < 2) {
+            isBust = true;
+            const targetDouble = currentScore === 50 ? 'Bullseye (D-BULL)' : `Double ${currentScore / 2}`;
+            bustExplanation = `In Double Out, must finish on a Double! (Need ${targetDouble}).`;
+          } else {
+            // Checked out!
+            return {
+              ...state,
+              phase: 'GAME_OVER',
+              winner: state.turn,
+              pinnedDarts: nextPinned,
+              score501P1: state.turn === 1 ? 0 : state.score501P1,
+              score501P2: state.turn === 2 ? 0 : state.score501P2,
+              statusMessage: `🎉 Player ${state.turn} checked out with ${dart.label}! Victory!`,
+            };
+          }
+        }
+
+        if (isBust) {
+          return {
+            ...state,
+            phase: 'BUST',
+            pinnedDarts: nextPinned,
+            score501P1: state.turn === 1 ? state.turnStartScore501 : state.score501P1,
+            score501P2: state.turn === 2 ? state.turnStartScore501 : state.score501P2,
+            statusMessage: `BUST! Hit ${dart.label}. ${bustExplanation} Reset to ${state.turnStartScore501}.`,
+          };
+        }
+
+        // Valid score reduction
+        const newScoreP1 = state.turn === 1 ? rem : state.score501P1;
+        const newScoreP2 = state.turn === 2 ? rem : state.score501P2;
+
+        if (remainingDarts <= 0) {
+          return {
+            ...state,
+            phase: 'TURN_SWITCHING',
+            dartsLeftInTurn: 0,
+            pinnedDarts: nextPinned,
+            score501P1: newScoreP1,
+            score501P2: newScoreP2,
+            statusMessage: `Player ${state.turn} hit ${dart.label}! Turn complete.`,
+          };
+        }
+
+        return {
+          ...state,
+          phase: 'TIMING',
+          dartsLeftInTurn: remainingDarts,
+          pinnedDarts: nextPinned,
+          score501P1: newScoreP1,
+          score501P2: newScoreP2,
+          statusMessage: `Player ${state.turn} hit ${dart.label}! Remaining: ${rem}`,
+        };
+      }
+
+      // 2. Scoring Logic: Cricket Mode
+      const cricket = { ...state.cricketState };
+      let addedP1 = 0;
+      let addedP2 = 0;
+
+      if (hit.baseNumber in cricket) {
+        const sector = hit.baseNumber;
+        const sectorData = { ...cricket[sector] };
+        const marksEarned = hit.multiplier;
+
+        const myMarks = state.turn === 1 ? sectorData.p1Marks : sectorData.p2Marks;
+        const oppMarks = state.turn === 1 ? sectorData.p2Marks : sectorData.p1Marks;
+
+        const neededToClose = Math.max(0, 3 - myMarks);
+        const marksToApply = Math.min(marksEarned, neededToClose);
+        const leftoverMarks = marksEarned - marksToApply;
+
+        if (state.turn === 1) sectorData.p1Marks += marksToApply;
+        else sectorData.p2Marks += marksToApply;
+
+        if (leftoverMarks > 0 && oppMarks < 3) {
+          const added = leftoverMarks * (sector === 25 ? 25 : sector);
+          if (state.turn === 1) addedP1 += added;
+          else addedP2 += added;
+        }
+
+        cricket[sector] = sectorData;
+
+        // Check Cricket Win Condition
+        const allClosed = Object.values(cricket).every((s) =>
+          state.turn === 1 ? s.p1Marks >= 3 : s.p2Marks >= 3
+        );
+        const totalP1 = state.cricketPointsP1 + addedP1;
+        const totalP2 = state.cricketPointsP2 + addedP2;
+
+        if (allClosed && (state.turn === 1 ? totalP1 >= totalP2 : totalP2 >= totalP1)) {
+          return {
+            ...state,
+            phase: 'GAME_OVER',
+            winner: state.turn,
+            pinnedDarts: nextPinned,
+            cricketState: cricket,
+            cricketPointsP1: totalP1,
+            cricketPointsP2: totalP2,
+            statusMessage: `🎉 Player ${state.turn} closed all sectors and leads points! Victory!`,
+          };
+        }
+      }
+
+      const nextCricketP1 = state.cricketPointsP1 + addedP1;
+      const nextCricketP2 = state.cricketPointsP2 + addedP2;
+
+      if (remainingDarts <= 0) {
+        return {
+          ...state,
+          phase: 'TURN_SWITCHING',
+          dartsLeftInTurn: 0,
+          pinnedDarts: nextPinned,
+          cricketState: cricket,
+          cricketPointsP1: nextCricketP1,
+          cricketPointsP2: nextCricketP2,
+          statusMessage: `Player ${state.turn} finished 3 darts. Switching turns...`,
+        };
+      }
+
+      return {
+        ...state,
+        phase: 'TIMING',
+        dartsLeftInTurn: remainingDarts,
+        pinnedDarts: nextPinned,
+        cricketState: cricket,
+        cricketPointsP1: nextCricketP1,
+        cricketPointsP2: nextCricketP2,
+        statusMessage: `Player ${state.turn} hit ${dart.label}! (${remainingDarts} darts remaining)`,
+      };
+    }
+
+    case 'ADVANCE_TURN': {
+      if (state.phase === 'GAME_OVER') return state;
+      const nextPlayer: PlayerNumber = state.turn === 1 ? 2 : 1;
+      return {
+        ...state,
+        phase: 'POSITIONING',
+        turn: nextPlayer,
+        dartsLeftInTurn: 3,
+        pinnedDarts: [],
+        turnStartScore501: nextPlayer === 1 ? state.score501P1 : state.score501P2,
+        statusMessage: `Player ${nextPlayer}'s turn. Stage 1: Drag target zone, then lock aim!`,
+      };
+    }
+
+    case 'RESET_GAME':
+      return createInitialDartState(action.mode ?? state.mode);
+
+    default:
+      return state;
+  }
+};
+
 export const Darts: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [mode, setMode] = useState<DartGameMode>('501');
-  const [doubleOut, setDoubleOut] = useState<boolean>(true);
-  const [turn, setTurn] = useState<PlayerNumber>(1);
-  const [winner, setWinner] = useState<PlayerNumber | null>(null);
-  const [dartsLeftInTurn, setDartsLeftInTurn] = useState<number>(3);
-  const [aimStage, setAimStage] = useState<'positioning' | 'timing' | 'throwing'>('positioning');
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Stage 1 - Drag target zone to aim, then lock aim!');
+  const [state, dispatch] = useReducer(dartReducer, undefined, () => createInitialDartState('501'));
 
-  // 501 Scores
-  const [score501P1, setScore501P1] = useState<number>(501);
-  const [score501P2, setScore501P2] = useState<number>(501);
-  const [turnStartScore501, setTurnStartScore501] = useState<number>(501);
-
-  // Cricket State (15..20 + 25 Bull)
-  const [cricketState, setCricketState] = useState<Record<number, CricketSectorState>>({
-    20: { p1Marks: 0, p2Marks: 0 },
-    19: { p1Marks: 0, p2Marks: 0 },
-    18: { p1Marks: 0, p2Marks: 0 },
-    17: { p1Marks: 0, p2Marks: 0 },
-    16: { p1Marks: 0, p2Marks: 0 },
-    15: { p1Marks: 0, p2Marks: 0 },
-    25: { p1Marks: 0, p2Marks: 0 }, // Bullseye
-  });
-  const [cricketPointsP1, setCricketPointsP1] = useState<number>(0);
-  const [cricketPointsP2, setCricketPointsP2] = useState<number>(0);
-
-  // Darts currently pinned in the board for this turn
-  const [pinnedDarts, setPinnedDarts] = useState<ThrownDart[]>([]);
+  // Sync game status with context
+  useEffect(() => {
+    if (state.phase === 'GAME_OVER') {
+      setGameStatus('finished');
+    } else {
+      setGameStatus('active');
+    }
+  }, [state.phase, setGameStatus]);
 
   // Dynamic Floating Reticle & Throw State
   const stateRef = useRef<{
@@ -108,200 +415,29 @@ export const Darts: React.FC = () => {
     flyingDart: null,
   });
 
-  // Calculate Dartboard Score from impact coordinates
-  const calculateHit = (x: number, y: number): { score: number; label: string; multiplier: number; baseNumber: number } => {
-    const dx = x - CENTER;
-    const dy = y - CENTER;
-    const r = Math.sqrt(dx * dx + dy * dy);
-
-    if (r > R_DOUBLE_OUTER) {
-      return { score: 0, label: 'MISS', multiplier: 0, baseNumber: 0 };
+  // Handle automatic turn advance on BUST or TURN_SWITCHING
+  useEffect(() => {
+    if (state.phase === 'BUST') {
+      triggerHaptic('warning');
+      const timer = setTimeout(() => {
+        playChalkSound();
+        triggerHaptic('medium');
+        stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
+        dispatch({ type: 'ADVANCE_TURN' });
+      }, 2200);
+      return () => clearTimeout(timer);
     }
 
-    if (r <= R_DOUBLE_BULL) {
-      return { score: 50, label: 'D-BULL (50)', multiplier: 2, baseNumber: 25 };
-    }
-
-    if (r <= R_SINGLE_BULL) {
-      return { score: 25, label: 'BULL (25)', multiplier: 1, baseNumber: 25 };
-    }
-
-    // Determine Sector
-    let angle = Math.atan2(dy, dx); // -PI to PI
-    // Rotate so top (-PI/2) aligns with 0
-    let normalized = angle + Math.PI / 2 + Math.PI / 20;
-    while (normalized < 0) normalized += Math.PI * 2;
-    while (normalized >= Math.PI * 2) normalized -= Math.PI * 2;
-
-    const sectorIdx = Math.floor(normalized / (Math.PI / 10));
-    const sectorVal = SECTORS[sectorIdx % 20];
-
-    if (r >= R_TRIPLE_INNER && r <= R_TRIPLE_OUTER) {
-      return { score: sectorVal * 3, label: `T${sectorVal} (${sectorVal * 3})`, multiplier: 3, baseNumber: sectorVal };
-    }
-
-    if (r >= R_DOUBLE_INNER && r <= R_DOUBLE_OUTER) {
-      return { score: sectorVal * 2, label: `D${sectorVal} (${sectorVal * 2})`, multiplier: 2, baseNumber: sectorVal };
-    }
-
-    return { score: sectorVal, label: `S${sectorVal}`, multiplier: 1, baseNumber: sectorVal };
-  };
-
-  // Reset Game
-  const resetGame = useCallback((newMode = mode) => {
-    setMode(newMode);
-    setTurn(1);
-    setWinner(null);
-    setDartsLeftInTurn(3);
-    setAimStage('positioning');
-    setPinnedDarts([]);
-    setScore501P1(501);
-    setScore501P2(501);
-    setTurnStartScore501(501);
-    setCricketPointsP1(0);
-    setCricketPointsP2(0);
-    setCricketState({
-      20: { p1Marks: 0, p2Marks: 0 },
-      19: { p1Marks: 0, p2Marks: 0 },
-      18: { p1Marks: 0, p2Marks: 0 },
-      17: { p1Marks: 0, p2Marks: 0 },
-      16: { p1Marks: 0, p2Marks: 0 },
-      15: { p1Marks: 0, p2Marks: 0 },
-      25: { p1Marks: 0, p2Marks: 0 },
-    });
-    stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
-    setStatusMessage(`Player 1: Stage 1 - Drag target zone to aim, then lock aim!`);
-  }, [mode]);
-
-  // Turn Advancement
-  const advanceTurn = useCallback(() => {
-    playChalkSound();
-    triggerHaptic('medium');
-    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-    setTurn(nextPlayer);
-    setDartsLeftInTurn(3);
-    setAimStage('positioning');
-    setPinnedDarts([]);
-    setTurnStartScore501(nextPlayer === 1 ? score501P1 : score501P2);
-    setGameStatus('active');
-    stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
-    setStatusMessage(`Player ${nextPlayer}'s turn. Stage 1: Drag target zone, then lock aim!`);
-  }, [turn, score501P1, score501P2, setGameStatus]);
-
-  // Handle Dart Landing & Score Update
-  const handleDartLanded = useCallback((dart: ThrownDart, nextDartsLeft: number) => {
-    playDartHitSound();
-    playChalkSound();
-    triggerHaptic('medium');
-
-    const newPinned = [...pinnedDarts, dart];
-    setPinnedDarts(newPinned);
-
-    // 1. Scoring Logic: 501 Countdown
-    if (mode === '501') {
-      const currentScore = turn === 1 ? score501P1 : score501P2;
-      const rem = currentScore - dart.score;
-
-      let isBust = false;
-      let bustExplanation = '';
-      if (rem < 0) {
-        isBust = true;
-        bustExplanation = `Overshot score (${rem} remaining).`;
-      } else if (rem === 1 && doubleOut) {
-        isBust = true;
-        bustExplanation = `Cannot leave 1 remaining in Double Out (no double equals 1).`;
-      } else if (rem === 0) {
-        if (doubleOut && dart.multiplier < 2) {
-          isBust = true;
-          const targetDouble = currentScore === 50 ? 'Bullseye (D-BULL)' : `Double ${currentScore / 2} (D${currentScore / 2})`;
-          bustExplanation = `In Double Out, you must finish on a Double! (Need ${targetDouble} to win). Switch to 'Open Out' above to allow singles.`;
-        } else {
-          // WIN!
-          if (turn === 1) setScore501P1(0);
-          else setScore501P2(0);
-          setWinner(turn);
-          setStatusMessage(`Player ${turn} checked out with ${dart.label}! Victory!`);
-          return;
-        }
-      }
-
-      if (isBust) {
-        triggerHaptic('warning');
-        // Reset score back to turn start
-        if (turn === 1) setScore501P1(turnStartScore501);
-        else setScore501P2(turnStartScore501);
-
-        setStatusMessage(`BUST! Hit ${dart.label}. ${bustExplanation} Reset to ${turnStartScore501}.`);
-        // End turn immediately with enough delay to read the rule explanation
-        setTimeout(() => {
-          advanceTurn();
-        }, 2200);
-        return;
-      } else {
-        // Valid score reduction
-        if (turn === 1) setScore501P1(rem);
-        else setScore501P2(rem);
-        setStatusMessage(`Player ${turn} hit ${dart.label}! Remaining: ${rem}`);
-      }
-    }
-
-    // 2. Scoring Logic: Cricket Mode
-    if (mode === 'cricket') {
-      const hit = calculateHit(dart.x, dart.y);
-      if (hit.baseNumber in cricketState) {
-        const sector = hit.baseNumber;
-        const state = { ...cricketState };
-        const sectorData = { ...state[sector] };
-        const marksEarned = hit.multiplier;
-
-        const myMarks = turn === 1 ? sectorData.p1Marks : sectorData.p2Marks;
-        const oppMarks = turn === 1 ? sectorData.p2Marks : sectorData.p1Marks;
-
-        const neededToClose = Math.max(0, 3 - myMarks);
-        const marksToApply = Math.min(marksEarned, neededToClose);
-        const leftoverMarks = marksEarned - marksToApply;
-
-        if (turn === 1) sectorData.p1Marks += marksToApply;
-        else sectorData.p2Marks += marksToApply;
-
-        // Extra marks score points if opponent hasn't closed
-        let addedPoints = 0;
-        if (leftoverMarks > 0 && oppMarks < 3) {
-          addedPoints = leftoverMarks * (sector === 25 ? 25 : sector);
-          if (turn === 1) setCricketPointsP1((p) => p + addedPoints);
-          else setCricketPointsP2((p) => p + addedPoints);
-        }
-
-        state[sector] = sectorData;
-        setCricketState(state);
-
-        // Check Cricket Win Condition
-        const allClosedByMe = Object.values(state).every((s) =>
-          turn === 1 ? s.p1Marks >= 3 : s.p2Marks >= 3
-        );
-        const myPoints = (turn === 1 ? cricketPointsP1 : cricketPointsP2) + addedPoints;
-        const oppPoints = turn === 1 ? cricketPointsP2 : cricketPointsP1;
-
-        if (allClosedByMe && myPoints >= oppPoints) {
-          setWinner(turn);
-          setStatusMessage(`Player ${turn} closed all sectors and leads points! Victory!`);
-          return;
-        }
-      }
-    }
-
-    // Check if turn finished (3 darts)
-    if (nextDartsLeft <= 0) {
-      setDartsLeftInTurn(0);
-      setAimStage('throwing');
-      setTimeout(() => {
-        advanceTurn();
+    if (state.phase === 'TURN_SWITCHING') {
+      const timer = setTimeout(() => {
+        playChalkSound();
+        triggerHaptic('medium');
+        stateRef.current.baseAim = { x: CENTER, y: CENTER - 90 };
+        dispatch({ type: 'ADVANCE_TURN' });
       }, 1400);
-    } else {
-      setDartsLeftInTurn(nextDartsLeft);
-      setAimStage('timing');
+      return () => clearTimeout(timer);
     }
-  }, [mode, turn, doubleOut, pinnedDarts, score501P1, score501P2, turnStartScore501, cricketState, cricketPointsP1, cricketPointsP2, advanceTurn]);
+  }, [state.phase]);
 
   // Canvas Animation: Dynamic Floating Reticle with Harmonic Sine Drift, Dart Flight, & Board Rendering
   useEffect(() => {
@@ -318,7 +454,7 @@ export const Darts: React.FC = () => {
       const nowSec = now * 0.001;
 
       // Autonomous chaotic harmonic drift (active in timing stage)
-      if (aimStage === 'timing') {
+      if (state.phase === 'TIMING') {
         const speed1 = 2.4;
         const speed2 = 3.8;
         const speed3 = 5.2;
@@ -345,7 +481,11 @@ export const Darts: React.FC = () => {
             multiplier: hit.multiplier,
           };
           s.flyingDart = null;
-          handleDartLanded(dart, dartsLeftInTurn - 1);
+
+          playDartHitSound();
+          playChalkSound();
+          triggerHaptic('medium');
+          dispatch({ type: 'DART_LANDED', dart, hit });
         }
       }
 
@@ -441,110 +581,125 @@ export const Darts: React.FC = () => {
       ctx.fill();
       ctx.stroke();
 
-      // 6. Pinned Darts Rendering (Darts already landed this round)
-      pinnedDarts.forEach((d) => {
-        // Drop Shadow
+      // 6. Pinned Darts Rendering
+      state.pinnedDarts.forEach((d) => {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.beginPath();
         ctx.ellipse(d.x + 3, d.y + 5, 4, 2, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Brass Barrel & Steel Needle
-        ctx.strokeStyle = '#ca8a04';
-        ctx.lineWidth = 3;
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x - 6, d.y - 12);
+        ctx.lineTo(d.x + 5, d.y + 9);
         ctx.stroke();
 
-        // Red/Blue Flight
-        ctx.fillStyle = turn === 1 ? '#3b82f6' : '#ef4444';
+        ctx.fillStyle = '#ef4444';
         ctx.beginPath();
-        ctx.moveTo(d.x - 6, d.y - 12);
-        ctx.lineTo(d.x - 12, d.y - 20);
-        ctx.lineTo(d.x - 4, d.y - 18);
+        ctx.moveTo(d.x + 5, d.y + 9);
+        ctx.lineTo(d.x + 7, d.y + 13);
+        ctx.lineTo(d.x + 3, d.y + 12);
         ctx.closePath();
         ctx.fill();
       });
 
-      // 7. In-Flight Dart (Approaching board)
+      // 7. Flying Dart in 3D Arc Motion
       if (s.flyingDart) {
         const p = s.flyingDart.progress;
         const curX = s.flyingDart.startX + (s.flyingDart.targetX - s.flyingDart.startX) * p;
-        const curY = s.flyingDart.startY + (s.flyingDart.targetY - s.flyingDart.startY) * p - Math.sin(p * Math.PI) * 20;
-        const scale = 1.4 - p * 0.4;
+        const curY = s.flyingDart.startY + (s.flyingDart.targetY - s.flyingDart.startY) * p;
+        const scale = 2.8 - 1.8 * p;
+
+        const shadowOffset = (1 - p) * 22 + 4;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(curX + shadowOffset * 0.4, curY + shadowOffset, 5 * scale, 3 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.save();
         ctx.translate(curX, curY);
         ctx.scale(scale, scale);
 
-        ctx.strokeStyle = '#eab308';
-        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#71717a';
+        ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(-8, -16);
+        ctx.lineTo(0, 6);
         ctx.stroke();
 
-        ctx.fillStyle = turn === 1 ? '#2563eb' : '#dc2626';
+        ctx.fillStyle = '#d4af37';
+        ctx.fillRect(-1.5, 6, 3, 7);
+
+        ctx.fillStyle = state.turn === 1 ? '#3b82f6' : '#ef4444';
         ctx.beginPath();
-        ctx.moveTo(-8, -16);
-        ctx.lineTo(-16, -26);
-        ctx.lineTo(-6, -24);
+        ctx.moveTo(-3.5, 13);
+        ctx.lineTo(3.5, 13);
+        ctx.lineTo(0, 20);
         ctx.closePath();
         ctx.fill();
 
         ctx.restore();
       }
 
-      // 8. Two-Stage Visual Targeting System: Stage 1 (Base Target Zone) vs Stage 2 (Drifting Crosshairs)
-      if (!s.flyingDart && dartsLeftInTurn > 0 && winner === null) {
-        const themeColor = turn === 1 ? '#3b82f6' : '#ef4444';
-        const glowColor = turn === 1 ? 'rgba(59, 130, 246, 0.45)' : 'rgba(239, 68, 68, 0.45)';
+      // 8. Active Targeting Reticle
+      if (state.dartsLeftInTurn > 0 && state.winner === null && !s.flyingDart) {
+        const themeColor = state.turn === 1 ? '#60a5fa' : '#f87171';
+        const glowColor = state.turn === 1 ? 'rgba(96, 165, 250, 0.4)' : 'rgba(248, 113, 113, 0.4)';
 
-        if (aimStage === 'positioning') {
-          // STAGE 1: Large Stationary Base Target Zone
+        if (state.phase === 'POSITIONING') {
           const bx = s.baseAim.x;
           const by = s.baseAim.y;
-          const targetSector = calculateHit(bx, by);
 
           ctx.save();
-          // Subtle radial glow area
-          ctx.fillStyle = turn === 1 ? 'rgba(59, 130, 246, 0.16)' : 'rgba(239, 68, 68, 0.16)';
-          ctx.beginPath();
-          ctx.arc(bx, by, 26, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Outer dashed target ring
-          ctx.strokeStyle = themeColor;
-          ctx.lineWidth = s.isDragging ? 2.2 : 1.8;
-          ctx.setLineDash([5, 4]);
           ctx.shadowColor = glowColor;
-          ctx.shadowBlur = s.isDragging ? 14 : 6;
+          ctx.shadowBlur = 12;
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 2.2;
+
           ctx.beginPath();
-          ctx.arc(bx, by, 26, 0, Math.PI * 2);
+          ctx.arc(bx, by, 22, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.shadowBlur = 0;
+
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(bx, by, 14, 0, Math.PI * 2);
+          ctx.stroke();
           ctx.setLineDash([]);
 
-          // Center crosshair marker
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
+          ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.moveTo(bx - 8, by);
-          ctx.lineTo(bx + 8, by);
-          ctx.moveTo(bx, by - 8);
-          ctx.lineTo(bx, by + 8);
+          ctx.arc(bx, by, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(bx - 30, by);
+          ctx.lineTo(bx - 22, by);
+          ctx.moveTo(bx + 22, by);
+          ctx.lineTo(bx + 30, by);
+          ctx.moveTo(bx, by - 30);
+          ctx.lineTo(bx, by - 22);
+          ctx.moveTo(bx, by + 22);
+          ctx.lineTo(bx, by + 30);
           ctx.stroke();
 
-          // Sector Target Pill badge
-          const labelText = targetSector.label || 'AIM';
+          const estimated = calculateHit(bx, by);
+          const labelText = estimated.label;
           ctx.font = 'bold 9px sans-serif';
-          const textWidth = ctx.measureText(labelText).width;
-          const badgeW = textWidth + 12;
+          const badgeW = ctx.measureText(labelText).width + 8;
           const badgeH = 14;
-          const badgeY = by - 36 < 16 ? by + 30 : by - 36;
+          const badgeY = by - 31;
 
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
           ctx.strokeStyle = themeColor;
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -558,14 +713,12 @@ export const Darts: React.FC = () => {
           ctx.fillText(labelText, bx, badgeY);
 
           ctx.restore();
-        } else if (aimStage === 'timing') {
-          // STAGE 2: Locked Base Anchor + Tether Sightline + Active Drifting Reticle
+        } else if (state.phase === 'TIMING') {
           const bx = s.baseAim.x;
           const by = s.baseAim.y;
           const { x: rx, y: ry } = s.floatingReticle;
 
           ctx.save();
-          // A. Locked Base Anchor (dashed ring)
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
           ctx.lineWidth = 1.2;
           ctx.setLineDash([3, 3]);
@@ -574,13 +727,11 @@ export const Darts: React.FC = () => {
           ctx.stroke();
           ctx.setLineDash([]);
 
-          // Center base anchor dot
           ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
           ctx.beginPath();
           ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
           ctx.fill();
 
-          // B. Sightline tether to drifting reticle
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 3]);
@@ -590,8 +741,6 @@ export const Darts: React.FC = () => {
           ctx.stroke();
           ctx.setLineDash([]);
 
-          // C. High-Precision Drifting Reticle
-          // Outer glow target ring
           ctx.shadowColor = glowColor;
           ctx.shadowBlur = 10;
           ctx.strokeStyle = themeColor;
@@ -601,7 +750,6 @@ export const Darts: React.FC = () => {
           ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Harmonic breathing rhythm ring
           const pulseR = 7.5 + Math.sin(nowSec * 6) * 1.5;
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
           ctx.lineWidth = 1.2;
@@ -609,13 +757,11 @@ export const Darts: React.FC = () => {
           ctx.arc(rx, ry, pulseR, 0, Math.PI * 2);
           ctx.stroke();
 
-          // Center precision pinpoint
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
           ctx.arc(rx, ry, 2, 0, Math.PI * 2);
           ctx.fill();
 
-          // Razor fine crosshairs
           ctx.strokeStyle = themeColor;
           ctx.lineWidth = 1.8;
           ctx.beginPath();
@@ -639,17 +785,17 @@ export const Darts: React.FC = () => {
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [pinnedDarts, dartsLeftInTurn, turn, winner, aimStage, handleDartLanded]);
+  }, [state.pinnedDarts, state.dartsLeftInTurn, state.turn, state.winner, state.phase]);
 
-  // Launch Throw registering relative to reticle's actual floating coordinates at tap millisecond (zero auto-aim snapping)
+  // Launch Throw registering relative to reticle's actual floating coordinates
   const launchThrow = useCallback(() => {
-    const s = stateRef.current;
-    if (s.flyingDart || dartsLeftInTurn <= 0 || winner !== null) return;
+    if (state.phase !== 'TIMING') return;
 
-    setAimStage('throwing');
+    const s = stateRef.current;
+    if (s.flyingDart || state.dartsLeftInTurn <= 0 || state.winner !== null) return;
+
     triggerHaptic('medium');
 
-    // Reticle floating coordinates at the exact millisecond of tap
     const targetX = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.x));
     const targetY = Math.max(10, Math.min(BOARD_SIZE - 10, s.floatingReticle.y));
 
@@ -660,11 +806,15 @@ export const Darts: React.FC = () => {
       targetY,
       progress: 0,
     };
-  }, [dartsLeftInTurn, winner]);
+
+    dispatch({ type: 'START_THROW' });
+  }, [state.phase, state.dartsLeftInTurn, state.winner]);
 
   // Pointer / Touch Aiming - Stage 1 Drag Positioning
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (stateRef.current.flyingDart || dartsLeftInTurn <= 0 || winner !== null) return;
+    if (state.phase !== 'POSITIONING') return;
+    if (stateRef.current.flyingDart || state.dartsLeftInTurn <= 0 || state.winner !== null) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -677,7 +827,6 @@ export const Darts: React.FC = () => {
     stateRef.current.isDragging = true;
     stateRef.current.dragPointerStart = { x: px, y: py };
     stateRef.current.dragBaseStart = { ...stateRef.current.baseAim };
-    setAimStage('positioning');
     triggerHaptic('light');
   };
 
@@ -706,9 +855,6 @@ export const Darts: React.FC = () => {
     s.isDragging = false;
     s.dragPointerStart = null;
     s.dragBaseStart = null;
-    // Releasing drag locks target and transitions to Stage 2 drift timing
-    setAimStage('timing');
-    setStatusMessage('Aim locked! Time the drift sway and tap THROW DART.');
     triggerHaptic('light');
   };
 
@@ -716,10 +862,11 @@ export const Darts: React.FC = () => {
     <div className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="darts"
-        gameName={`Darts (${mode === '501' ? '501 Countdown' : 'Cricket'})`}
-        turn={turn}
-        statusText={`Player ${turn}'s Turn (${dartsLeftInTurn} Darts)`}
-        subStatusText={statusMessage}
+        gameName={`Darts (${state.mode === '501' ? '501 Countdown' : 'Cricket'})`}
+        turn={state.turn}
+        statusText={`Player ${state.turn}'s Turn (${state.dartsLeftInTurn} Darts)`}
+        subStatusText={state.statusMessage}
+        onRestart={() => dispatch({ type: 'RESET_GAME' })}
       />
 
       {/* Main Container */}
@@ -729,17 +876,17 @@ export const Darts: React.FC = () => {
           {/* Mode Switcher */}
           <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-xl border border-white/10">
             <button
-              onClick={() => resetGame('501')}
+              onClick={() => dispatch({ type: 'SET_MODE', mode: '501' })}
               className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase transition-all ${
-                mode === '501' ? 'bg-amber-500 text-black shadow-sm' : 'text-accent-light/70 hover:text-white'
+                state.mode === '501' ? 'bg-amber-500 text-black shadow-sm' : 'text-accent-light/70 hover:text-white'
               }`}
             >
               501
             </button>
             <button
-              onClick={() => resetGame('cricket')}
+              onClick={() => dispatch({ type: 'SET_MODE', mode: 'cricket' })}
               className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase transition-all ${
-                mode === 'cricket' ? 'bg-amber-500 text-black shadow-sm' : 'text-accent-light/70 hover:text-white'
+                state.mode === 'cricket' ? 'bg-amber-500 text-black shadow-sm' : 'text-accent-light/70 hover:text-white'
               }`}
             >
               Cricket
@@ -747,52 +894,52 @@ export const Darts: React.FC = () => {
           </div>
 
           {/* Scores Overview */}
-          {mode === '501' ? (
+          {state.mode === '501' ? (
             <div className="flex items-center gap-4 text-xs font-black font-mono-digital tracking-wider">
-              <span className={turn === 1 ? 'text-player-1 scale-110 transition-transform' : 'text-white/60'}>
-                P1: {score501P1}
+              <span className={state.turn === 1 ? 'text-player-1 scale-110 transition-transform' : 'text-white/60'}>
+                P1: {state.score501P1}
               </span>
               <span className="text-white/30">|</span>
-              <span className={turn === 2 ? 'text-player-2 scale-110 transition-transform' : 'text-white/60'}>
-                P2: {score501P2}
+              <span className={state.turn === 2 ? 'text-player-2 scale-110 transition-transform' : 'text-white/60'}>
+                P2: {state.score501P2}
               </span>
             </div>
           ) : (
             <div className="flex items-center gap-4 text-xs font-black font-mono-digital tracking-wider">
-              <span className={turn === 1 ? 'text-player-1' : 'text-white/60'}>
-                P1: {cricketPointsP1} pts
+              <span className={state.turn === 1 ? 'text-player-1' : 'text-white/60'}>
+                P1: {state.cricketPointsP1} pts
               </span>
               <span className="text-white/30">|</span>
-              <span className={turn === 2 ? 'text-player-2' : 'text-white/60'}>
-                P2: {cricketPointsP2} pts
+              <span className={state.turn === 2 ? 'text-player-2' : 'text-white/60'}>
+                P2: {state.cricketPointsP2} pts
               </span>
             </div>
           )}
 
           {/* Double-out toggle for 501 */}
-          {mode === '501' && (
+          {state.mode === '501' && (
             <button
-              onClick={() => setDoubleOut(!doubleOut)}
+              onClick={() => dispatch({ type: 'TOGGLE_DOUBLE_OUT' })}
               title={
-                doubleOut
+                state.doubleOut
                   ? 'Double Out is ON (regulation): Final checkout dart must be a Double (e.g. D4 for 8). Tap to switch to Open Out.'
                   : 'Open Out is ON: Any dart reducing score to 0 wins. Tap to switch to Double Out.'
               }
               className={`text-[10px] px-2.5 py-0.5 rounded-md font-black uppercase border transition-all cursor-pointer ${
-                doubleOut
+                state.doubleOut
                   ? 'bg-emerald-500/25 text-emerald-400 border-emerald-500/50 shadow-sm'
                   : 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm'
               }`}
             >
-              {doubleOut ? '🎯 Double Out' : '⚡ Open Out'}
+              {state.doubleOut ? '🎯 Double Out' : '⚡ Open Out'}
             </button>
           )}
         </div>
 
         {/* 501 Checkout Suggestion Banner */}
-        {mode === '501' && (() => {
-          const currentScore = turn === 1 ? score501P1 : score501P2;
-          const advice = getCheckoutGuide(currentScore, doubleOut);
+        {state.mode === '501' && (() => {
+          const currentScore = state.turn === 1 ? state.score501P1 : state.score501P2;
+          const advice = getCheckoutGuide(currentScore, state.doubleOut);
           if (!advice) return null;
           return (
             <div className="flex items-center gap-1.5 px-3 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-full text-amber-300 text-[11px] font-bold font-mono-digital shadow-sm shrink-0 mb-1">
@@ -802,7 +949,7 @@ export const Darts: React.FC = () => {
           );
         })()}
 
-        {/* Sisal Dartboard Canvas Container - Dynamic Responsive Sizing */}
+        {/* Sisal Dartboard Canvas Container */}
         <div className="flex-1 min-h-0 w-full flex items-center justify-center py-1">
           <div className="relative aspect-square h-full max-h-full max-w-full clubhouse-board-depth table-flat rounded-full overflow-hidden shadow-2xl border-4 border-[#3e1f0c] flex items-center justify-center">
             <canvas
@@ -813,16 +960,18 @@ export const Darts: React.FC = () => {
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className="w-full h-full touch-none cursor-crosshair"
+              className={`w-full h-full touch-none ${
+                state.phase === 'POSITIONING' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
+              }`}
             />
 
-            {/* Darts in Hand Indicator (Bottom Left) */}
+            {/* Darts in Hand Indicator */}
             <div className="absolute bottom-3 left-4 flex gap-1.5 pointer-events-none bg-black/60 px-2.5 py-1 rounded-full border border-white/15">
               {[1, 2, 3].map((num) => (
                 <div
                   key={num}
                   className={`w-2.5 h-6 rounded-xs transition-opacity ${
-                    num <= dartsLeftInTurn ? (turn === 1 ? 'bg-player-1' : 'bg-player-2') : 'bg-stone-600 opacity-30'
+                    num <= state.dartsLeftInTurn ? (state.turn === 1 ? 'bg-player-1' : 'bg-player-2') : 'bg-stone-600 opacity-30'
                   }`}
                 />
               ))}
@@ -831,10 +980,10 @@ export const Darts: React.FC = () => {
         </div>
 
         {/* Cricket Tally Card (Visible in Cricket Mode) */}
-        {mode === 'cricket' && (
+        {state.mode === 'cricket' && (
           <div className="w-full max-w-md md:max-w-lg grid grid-cols-7 gap-1 bg-black/60 p-1.5 rounded-2xl border border-[#3e444c] text-center shrink-0 mb-1">
             {[20, 19, 18, 17, 16, 15, 25].map((target) => {
-              const data = cricketState[target];
+              const data = state.cricketState[target];
               const p1Closed = data.p1Marks >= 3;
               const p2Closed = data.p2Marks >= 3;
               return (
@@ -842,7 +991,6 @@ export const Darts: React.FC = () => {
                   <span className="text-[10px] font-black text-amber-400">
                     {target === 25 ? 'BULL' : target}
                   </span>
-                  {/* Marks P1 vs P2 */}
                   <div className="flex items-center gap-1.5 mt-0.5 text-[9px] font-bold">
                     <span className={p1Closed ? 'text-emerald-400 font-black' : 'text-player-1'}>
                       {data.p1Marks === 0 ? '-' : data.p1Marks === 1 ? '/' : data.p1Marks === 2 ? 'X' : '⨂'}
@@ -860,19 +1008,18 @@ export const Darts: React.FC = () => {
 
         {/* Two-Stage Tactile Aiming & Throw Control Deck */}
         <div className="w-full max-w-md md:max-w-lg flex flex-col items-center gap-1.5 shrink-0 px-1">
-          {aimStage === 'positioning' ? (
+          {state.phase === 'POSITIONING' ? (
             <div className="w-full flex flex-col gap-1.5">
               <button
                 onClick={() => {
-                  setAimStage('timing');
-                  setStatusMessage('Aim locked! Time the drift sway and tap THROW DART.');
                   triggerHaptic('light');
+                  dispatch({ type: 'LOCK_AIM' });
                 }}
-                disabled={dartsLeftInTurn <= 0 || winner !== null}
+                disabled={state.dartsLeftInTurn <= 0 || state.winner !== null}
                 className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                  dartsLeftInTurn <= 0 || winner !== null
+                  state.dartsLeftInTurn <= 0 || state.winner !== null
                     ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/30'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/30 cursor-pointer'
                 }`}
               >
                 <span>🔒 Lock Aim & Start Drift Timing</span>
@@ -886,12 +1033,11 @@ export const Darts: React.FC = () => {
               <div className="w-full flex gap-2">
                 <button
                   onClick={() => {
-                    setAimStage('positioning');
-                    setStatusMessage('Stage 1: Drag target circle to reposition aim.');
                     triggerHaptic('light');
+                    dispatch({ type: 'UNLOCK_AIM' });
                   }}
-                  disabled={aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null}
-                  className="px-3 py-2.5 rounded-xl font-bold text-xs uppercase bg-white/10 hover:bg-white/15 text-stone-200 border border-white/10 transition-all active:scale-95 flex items-center gap-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={state.phase !== 'TIMING'}
+                  className="px-3 py-2.5 rounded-xl font-bold text-xs uppercase bg-white/10 hover:bg-white/15 text-stone-200 border border-white/10 transition-all active:scale-95 flex items-center gap-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   title="Reposition base target"
                 >
                   <span>✏️ Adjust</span>
@@ -899,17 +1045,17 @@ export const Darts: React.FC = () => {
 
                 <button
                   onClick={launchThrow}
-                  disabled={aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null}
+                  disabled={state.phase !== 'TIMING'}
                   className={`flex-1 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                    aimStage === 'throwing' || dartsLeftInTurn <= 0 || winner !== null
+                    state.phase !== 'TIMING'
                       ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 shadow-amber-500/20'
+                      : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 shadow-amber-500/20 cursor-pointer'
                   }`}
                 >
                   <span>
-                    {aimStage === 'throwing'
+                    {state.phase === 'IN_FLIGHT'
                       ? '⏳ Dart in flight...'
-                      : `🎯 THROW DART (${4 - dartsLeftInTurn}/3)`}
+                      : `🎯 THROW DART (${4 - state.dartsLeftInTurn}/3)`}
                   </span>
                 </button>
               </div>
@@ -922,15 +1068,16 @@ export const Darts: React.FC = () => {
       </main>
 
       {/* Game Over Modal */}
-      {winner !== null && (
+      {state.winner !== null && (
         <GameOverModal
-          winner={winner}
-          gameName={`Darts (${mode.toUpperCase()})`}
-          onRestart={() => resetGame(mode)}
+          winner={state.winner}
+          gameName={`Darts (${state.mode.toUpperCase()})`}
+          onRestart={() => dispatch({ type: 'RESET_GAME' })}
           onMenu={resetToMenu}
         />
       )}
     </div>
   );
 };
+
 export default Darts;

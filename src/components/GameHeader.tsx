@@ -59,8 +59,12 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   return (
     <>
       <header
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
-        className="px-3.5 pb-2.5 flex flex-col gap-1.5 border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50"
+        style={{
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 8px), 16px)',
+          WebkitBackdropFilter: 'none',
+          backdropFilter: 'none',
+        }}
+        className="relative px-3.5 pb-2.5 flex flex-col gap-1.5 border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 shrink-0 select-none"
       >
         {/* Top action row */}
         <div className="flex items-center justify-between">

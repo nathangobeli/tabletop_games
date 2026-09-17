@@ -13,8 +13,12 @@ export const GamePlaceholder: React.FC = () => {
     <div className="flex flex-col h-full w-full justify-between">
       {/* Top Game Navigation Header */}
       <header
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
-        className="px-4 pb-3 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50"
+        style={{
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 8px), 16px)',
+          WebkitBackdropFilter: 'none',
+          backdropFilter: 'none',
+        }}
+        className="relative px-4 pb-3 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 shrink-0 select-none"
       >
         <button
           onClick={resetToMenu}

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.2] - 2026-09-16 — "Top Bar Crisp Header & Dynamic Catalog Synchronization"
+
+### Fixed — Crisp Top Bar & iOS Notch Status Bar Bleed Resolution
+- **Removed iOS System Blur Bleed**:
+  - Replaced `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />` with `content="default"` and updated `<meta name="theme-color" content="#f3e9dc" />` in `index.html`.
+  - In iOS PWA standalone mode, `black-translucent` had been causing iOS WebKit to force a dark translucent backdrop blur over the top 44px–59px of the page directly across the header. Changing to `default` allows the status bar to seamlessly integrate with the cream `#f3e9dc` header without blur or discoloration.
+- **Syntactically Valid Safe-Area Top Padding**:
+  - Replaced invalid `max(env(safe-area-inset-top), 16px)` with `max(calc(env(safe-area-inset-top, 0px) + 8px), 16px)`. Adding the `, 0px` fallback prevents CSS parser invalidation, and adding `+ 8px` gives generous breathing room so header titles never collide with the notch or Dynamic Island.
+  - Enforced `WebkitBackdropFilter: 'none'` and `backdropFilter: 'none'` explicitly on all navigation headers.
+- **Genuine Font Weight 900**:
+  - Added `Outfit:wght@...900` in Google Fonts (`index.html`) so `font-black` on "TABLETOP GAMES" uses genuine vector outlines instead of browser faux-bold blurring.
+- **Responsive Mobile Controls Layout**:
+  - On mobile viewports, the theme selector collapses to a sleek, single tactile cycler button (`🪵`), leaving generous space for the title, subtitle, online duel, and haptics without clipping. Expands to the 4-pill group on tablets and desktops.
+
+### Enhanced — Catalog Count & PWA Manifest Synchronization
+- **Dynamic Header Count**: Upgraded `MainMenu.tsx` subtitle from hardcoded string to `{GAME_CATALOG.length} Classic 2-Player Games`, ensuring UI headers automatically match the catalog length as new games are added.
+- **PWA Manifests Updated**: Synchronized `public/manifest.json` and `public/site.webmanifest` descriptions from 22 to the current 26 playable titles.
+- **Complete 26-Game Roster**: Confirmed all 26 titles (Mancala, Dots and Boxes, Speed, Yacht Dice, Renegade, Connect Four, Air Hockey, Toy Tennis, Carrom, Gomoku, Checkers, Backgammon, Billiards, Darts, Bowling, Mini Shogi, Toy Curling, Hex, Matching, Nine Men's Morris, Hare and Hounds, Hit and Blow, Hanafuda, President, Last Card, Riichi Mahjong) are registered, typed, and wired with lazy code-splitting.
+
+---
+
+## [1.8.1] - 2026-09-16 — "Architectural Integrity: Shared Card Engine & Phase State Machines"
+
+### Added — Unified Card, Deck & Dealing Engine (`src/utils/cards.ts`, `src/components/ProceduralCard.tsx`)
+- **Centralized Card Logic**:
+  - Centralized full 52-card standard deck generation, optional Joker inclusion, suits (`spades`, `hearts`, `diamonds`, `clubs`, `joker`), suit symbols (`♠`, `♥`, `♦`, `♣`, `★`), color detection (`isRedSuit`), and rank labels.
+  - Unbiased Fisher-Yates array shuffling algorithm (`shuffleDeck`, `shuffleCards`).
+  - Partition dealing helper (`dealCards`) and rank sorting utility (`sortCards`).
+- **Reusable Procedural Card Component (`<ProceduralCard />`)**:
+  - Crisp, tactile playing card view with authentic bevels, linen micro-texture, inverted bottom-right pips, and responsive sizing (`sm`, `md`, `lg`).
+- **Codebase Migration**:
+  - `President.tsx`, `LastCard.tsx`, and `Speed.tsx` refactored to consume `cards.ts`, removing hundreds of lines of duplicated deck loops.
+  - `deck.ts` updated to re-export from `cards.ts` for 100% backward compatibility.
+
+---
+
+### Enhanced — Finite State Machines for Complex Game Phases (`useReducer`)
+- **Darts Phase State Machine (`src/games/Darts.tsx`)**:
+  - Migrated dispersed `useState` hooks to a typed `useReducer` finite state machine with strict phase boundaries:
+    `'POSITIONING' -> 'TIMING' -> 'IN_FLIGHT' -> 'BUST' | 'TURN_SWITCHING' -> 'GAME_OVER'`.
+  - **Impossible Invalid Transitions**: Throws cannot be triggered unless in `'TIMING'` phase; aiming cannot be dragged during dart flight or after victory; busts and checkouts are deterministically guarded.
+- **Yacht Dice Phase State Machine (`src/games/YachtDice.tsx`)**:
+  - Migrated rolling, holding, and scoring to a typed `useReducer` finite state machine:
+    `'INITIAL_ROLL' -> 'ROLLING' -> 'DECIDING' -> 'TURN_TRANSITION' -> 'GAME_OVER'`.
+  - **Impossible Invalid Transitions**: Holding dice is strictly disabled before the first roll (`'INITIAL_ROLL'`) and during rolls (`'ROLLING'`); scorecard categories cannot be committed while dice are tumbling; rolls remaining counter is strictly bounded ($3 \to 0$).
+
+---
+
 ## [1.8.0] - 2026-09-16 — "Next-Gen Play: Web Worker Minimax AI, P2P Remote Duel & State Rollback Undo"
 
 ### Added — Web Worker Minimax AI Engine (`src/workers/aiWorker.ts`, `src/utils/aiClient.ts`)

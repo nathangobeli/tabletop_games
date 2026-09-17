@@ -24,7 +24,7 @@ body {
 }
 
 .pt-safe {
-  padding-top: max(env(safe-area-inset-top), 16px);
+  padding-top: max(calc(env(safe-area-inset-top, 0px) + 8px), 16px);
 }
 
 /* Thematic Scoped Typography */

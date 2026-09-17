@@ -207,23 +207,35 @@ export const MainMenu: React.FC = () => {
     { id: 'arcade', label: 'Arcade', icon: '⚡' },
   ];
 
+  const cycleTheme = () => {
+    triggerHaptic('light');
+    playTapSound();
+    const currentIndex = THEMES.findIndex((t) => t.id === theme);
+    const nextTheme = THEMES[(currentIndex + 1) % THEMES.length];
+    setTheme(nextTheme.id);
+  };
+
   return (
     <div className="flex flex-col h-full w-full justify-between">
       {/* Top Header Bar */}
       <header
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
-        className="px-4 sm:px-6 pb-2.5 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 gap-2"
+        style={{
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 8px), 16px)',
+          WebkitBackdropFilter: 'none',
+          backdropFilter: 'none',
+        }}
+        className="relative px-3 sm:px-6 pb-2.5 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 gap-2 shrink-0 select-none"
       >
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-lg sm:text-xl font-black text-container-dark tracking-tight uppercase flex items-center gap-2 truncate">
             <span>Tabletop Games</span>
           </h1>
-          <p className="text-[11px] sm:text-xs font-semibold text-[#7d6753] truncate">
-            26 Classic 2-Player Games • Pass &amp; Play • AI • Remote Duel
+          <p className="text-[10px] sm:text-xs font-semibold text-[#7d6753] truncate">
+            {GAME_CATALOG.length} Classic 2-Player Games • Pass &amp; Play • AI • Remote Duel
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Online Remote Duel Button */}
           <button
             onClick={() => {
@@ -234,14 +246,24 @@ export const MainMenu: React.FC = () => {
             type="button"
             aria-label="Online Remote Duel"
             title="Online P2P Duel"
-            className="px-2.5 py-1.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-900 border border-amber-500/40 text-xs font-black shadow-xs transition-all flex items-center gap-1.5"
+            className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl sm:rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-900 border border-amber-500/40 text-xs font-black shadow-xs transition-all flex items-center gap-1 shrink-0"
           >
             <span>🌐</span>
-            <span className="hidden sm:inline">Online Duel</span>
+            <span className="hidden md:inline">Online Duel</span>
           </button>
 
-          {/* Theme Selector Pill Group */}
-          <div className="flex items-center bg-container-dark/10 p-1 rounded-2xl border border-stone-300/40 shadow-inner">
+          {/* Mobile Theme Cycler Button */}
+          <button
+            onClick={cycleTheme}
+            type="button"
+            title={`Current Theme: ${THEMES.find((t) => t.id === theme)?.label}. Tap to cycle table theme.`}
+            className="sm:hidden w-8 h-8 rounded-xl bg-container-dark/10 hover:bg-container-dark/15 active:scale-95 text-xs flex items-center justify-center border border-stone-300/40 shadow-inner shrink-0 transition-all"
+          >
+            <span>{THEMES.find((t) => t.id === theme)?.icon}</span>
+          </button>
+
+          {/* Desktop Theme Selector Pill Group */}
+          <div className="hidden sm:flex items-center bg-container-dark/10 p-1 rounded-2xl border border-stone-300/40 shadow-inner shrink-0">
             {THEMES.map((t) => {
               const isActive = theme === t.id;
               return (
@@ -256,7 +278,7 @@ export const MainMenu: React.FC = () => {
                       : 'text-stone-600 hover:text-stone-900 opacity-80 hover:opacity-100'
                   }`}
                 >
-                  <span>{t.icon}</span>
+                  <span className="text-xs">{t.icon}</span>
                   <span className="hidden md:inline text-[11px]">{t.label}</span>
                 </button>
               );
@@ -268,10 +290,10 @@ export const MainMenu: React.FC = () => {
             onClick={toggleHaptics}
             type="button"
             aria-label={settings.haptics ? 'Haptics Enabled' : 'Haptics Disabled'}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-container-dark/10 hover:bg-container-dark/15 active:scale-95 transition-all flex items-center justify-center text-container-dark shadow-inner"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-container-dark/10 hover:bg-container-dark/15 active:scale-95 transition-all flex items-center justify-center text-container-dark shadow-inner shrink-0"
           >
             {settings.haptics ? (
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 8v8" />
                 <path d="M6 5v14" />
                 <path d="M10 2v20" />
@@ -280,7 +302,7 @@ export const MainMenu: React.FC = () => {
                 <path d="M22 8v8" />
               </svg>
             ) : (
-              <svg className="w-5 h-5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="2" y1="2" x2="22" y2="22" />
                 <path d="M6 5v5" />
                 <path d="M6 15v4" />

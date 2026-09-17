@@ -1,17 +1,17 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useReducer, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
 
-interface Die {
+export interface Die {
   value: number; // 1-6
   held: boolean;
 }
 
 // 12 Scoring Categories
-type CategoryKey =
+export type CategoryKey =
   | 'ones'
   | 'twos'
   | 'threes'
@@ -25,14 +25,14 @@ type CategoryKey =
   | 'largeStraight'
   | 'yacht';
 
-interface CategoryDef {
+export interface CategoryDef {
   key: CategoryKey;
   name: string;
   section: 'upper' | 'lower';
   desc: string;
 }
 
-const CATEGORIES: CategoryDef[] = [
+export const CATEGORIES: CategoryDef[] = [
   { key: 'ones', name: 'Ones', section: 'upper', desc: 'Sum of 1s' },
   { key: 'twos', name: 'Twos', section: 'upper', desc: 'Sum of 2s' },
   { key: 'threes', name: 'Threes', section: 'upper', desc: 'Sum of 3s' },
@@ -47,172 +47,347 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'yacht', name: 'Yacht', section: 'lower', desc: '5 matching -> 50 pts' },
 ];
 
-type Scorecard = Partial<Record<CategoryKey, number>>;
+export type Scorecard = Partial<Record<CategoryKey, number>>;
 
-export const YachtDice: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+// =======================================================
+// State Machine Definition & Reducer
+// =======================================================
 
-  // Initial dice: 5 unheld random or 1s
-  const [dice, setDice] = useState<Die[]>([
+export type YachtPhase =
+  | 'INITIAL_ROLL'     // Turn start: 3 rolls left, holding dice is disabled until first roll
+  | 'ROLLING'          // Dice tumbling: all inputs locked
+  | 'DECIDING'         // Dice settled: player can toggle holds, re-roll, or pick category
+  | 'TURN_TRANSITION'  // Scorecard entry picked: brief celebration/sound before next turn
+  | 'GAME_OVER';       // All 12 categories scored by both players: match finished!
+
+export interface YachtState {
+  phase: YachtPhase;
+  turn: PlayerNumber;
+  rollsRemaining: number;
+  dice: Die[];
+  scorecardP1: Scorecard;
+  scorecardP2: Scorecard;
+  winner: PlayerNumber | 'draw' | null;
+  statusMessage: string;
+}
+
+export type YachtAction =
+  | { type: 'START_ROLL' }
+  | { type: 'SET_JITTER_DICE'; dice: Die[] }
+  | { type: 'FINISH_ROLL'; finalDice: Die[] }
+  | { type: 'TOGGLE_DIE_HOLD'; index: number }
+  | { type: 'SCORE_CATEGORY'; category: CategoryKey; score: number }
+  | { type: 'ADVANCE_TURN' }
+  | { type: 'RESTART_GAME' };
+
+// Score calculation engine
+export const calculateScore = (key: CategoryKey, values: number[]): number => {
+  const counts = new Map<number, number>();
+  values.forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
+  const sumAll = values.reduce((a, b) => a + b, 0);
+
+  switch (key) {
+    case 'ones':
+      return (counts.get(1) || 0) * 1;
+    case 'twos':
+      return (counts.get(2) || 0) * 2;
+    case 'threes':
+      return (counts.get(3) || 0) * 3;
+    case 'fours':
+      return (counts.get(4) || 0) * 4;
+    case 'fives':
+      return (counts.get(5) || 0) * 5;
+    case 'sixes':
+      return (counts.get(6) || 0) * 6;
+    case 'choice':
+      return sumAll;
+    case 'fourOfAKind': {
+      const hasFour = Array.from(counts.values()).some((c) => c >= 4);
+      return hasFour ? sumAll : 0;
+    }
+    case 'fullHouse': {
+      const vals = Array.from(counts.values()).sort((a, b) => b - a);
+      const isFH = (vals[0] === 3 && vals[1] === 2) || vals[0] === 5;
+      return isFH ? 25 : 0;
+    }
+    case 'smallStraight': {
+      const uniqueSorted = Array.from(new Set(values)).sort((a, b) => a - b);
+      const str = uniqueSorted.join('');
+      const hasSmall = str.includes('1234') || str.includes('2345') || str.includes('3456');
+      return hasSmall ? 30 : 0;
+    }
+    case 'largeStraight': {
+      const sorted = [...values].sort((a, b) => a - b).join('');
+      const hasLarge = sorted === '12345' || sorted === '23456';
+      return hasLarge ? 40 : 0;
+    }
+    case 'yacht': {
+      const isYacht = Array.from(counts.values()).some((c) => c === 5);
+      return isYacht ? 50 : 0;
+    }
+    default:
+      return 0;
+  }
+};
+
+// Compute upper sum, bonus, and totals
+export const computeTotals = (card: Scorecard) => {
+  let upperSum = 0;
+  const upperKeys: CategoryKey[] = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
+  upperKeys.forEach((k) => {
+    if (card[k] !== undefined) upperSum += card[k]!;
+  });
+
+  const upperBonus = upperSum >= 63 ? 35 : 0;
+
+  let lowerSum = 0;
+  const lowerKeys: CategoryKey[] = [
+    'choice',
+    'fourOfAKind',
+    'fullHouse',
+    'smallStraight',
+    'largeStraight',
+    'yacht',
+  ];
+  lowerKeys.forEach((k) => {
+    if (card[k] !== undefined) lowerSum += card[k]!;
+  });
+
+  const total = upperSum + upperBonus + lowerSum;
+  return { upperSum, upperBonus, lowerSum, total };
+};
+
+const createInitialYachtState = (): YachtState => ({
+  phase: 'INITIAL_ROLL',
+  turn: 1,
+  rollsRemaining: 3,
+  dice: [
     { value: 1, held: false },
     { value: 2, held: false },
     { value: 3, held: false },
     { value: 4, held: false },
     { value: 5, held: false },
-  ]);
+  ],
+  scorecardP1: {},
+  scorecardP2: {},
+  winner: null,
+  statusMessage: 'Player 1: Roll the dice to start turn (3 rolls left)',
+});
 
-  const [rollsRemaining, setRollsRemaining] = useState<number>(3);
-  const [turn, setTurn] = useState<PlayerNumber>(1);
-  const [scorecardP1, setScorecardP1] = useState<Scorecard>({});
-  const [scorecardP2, setScorecardP2] = useState<Scorecard>({});
-  const [winner, setWinner] = useState<PlayerNumber | 'draw' | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Roll the dice (3 rolls left)');
-  const [isRolling, setIsRolling] = useState<boolean>(false);
-
-  // Score calculation engine
-  const calculateScore = useCallback((key: CategoryKey, values: number[]): number => {
-    const counts = new Map<number, number>();
-    values.forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
-    const sumAll = values.reduce((a, b) => a + b, 0);
-
-    switch (key) {
-      case 'ones':
-        return (counts.get(1) || 0) * 1;
-      case 'twos':
-        return (counts.get(2) || 0) * 2;
-      case 'threes':
-        return (counts.get(3) || 0) * 3;
-      case 'fours':
-        return (counts.get(4) || 0) * 4;
-      case 'fives':
-        return (counts.get(5) || 0) * 5;
-      case 'sixes':
-        return (counts.get(6) || 0) * 6;
-      case 'choice':
-        return sumAll;
-      case 'fourOfAKind': {
-        const hasFour = Array.from(counts.values()).some((c) => c >= 4);
-        return hasFour ? sumAll : 0;
+const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
+  switch (action.type) {
+    case 'START_ROLL': {
+      // Guard: can only roll in INITIAL_ROLL or DECIDING when rolls > 0 and no winner
+      if (
+        (state.phase !== 'INITIAL_ROLL' && state.phase !== 'DECIDING') ||
+        state.rollsRemaining <= 0 ||
+        state.winner !== null
+      ) {
+        return state;
       }
-      case 'fullHouse': {
-        const vals = Array.from(counts.values()).sort((a, b) => b - a);
-        const isFH = (vals[0] === 3 && vals[1] === 2) || vals[0] === 5;
-        return isFH ? 25 : 0;
-      }
-      case 'smallStraight': {
-        // 4 sequential: 1-2-3-4, 2-3-4-5, or 3-4-5-6
-        const uniqueSorted = Array.from(new Set(values)).sort((a, b) => a - b);
-        const str = uniqueSorted.join('');
-        const hasSmall = str.includes('1234') || str.includes('2345') || str.includes('3456');
-        return hasSmall ? 30 : 0;
-      }
-      case 'largeStraight': {
-        // 5 sequential: 1-2-3-4-5 or 2-3-4-5-6
-        const sorted = [...values].sort((a, b) => a - b).join('');
-        const hasLarge = sorted === '12345' || sorted === '23456';
-        return hasLarge ? 40 : 0;
-      }
-      case 'yacht': {
-        const isYacht = Array.from(counts.values()).some((c) => c === 5);
-        return isYacht ? 50 : 0;
-      }
-      default:
-        return 0;
+      return {
+        ...state,
+        phase: 'ROLLING',
+        statusMessage: `Rolling dice... (${state.rollsRemaining - 1} rolls left after this)`,
+      };
     }
-  }, []);
 
-  // Compute upper sum, bonus, and totals
-  const computeTotals = useCallback((card: Scorecard) => {
-    let upperSum = 0;
-    const upperKeys: CategoryKey[] = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
-    upperKeys.forEach((k) => {
-      if (card[k] !== undefined) upperSum += card[k]!;
-    });
+    case 'SET_JITTER_DICE': {
+      if (state.phase !== 'ROLLING') return state;
+      return {
+        ...state,
+        dice: action.dice,
+      };
+    }
 
-    const upperBonus = upperSum >= 63 ? 35 : 0;
+    case 'FINISH_ROLL': {
+      if (state.phase !== 'ROLLING') return state;
+      const nextRolls = state.rollsRemaining - 1;
+      const status =
+        nextRolls === 0
+          ? `No rolls left! Player ${state.turn}: Tap a category to score.`
+          : `Player ${state.turn}: Hold dice or roll again (${nextRolls} left).`;
 
-    let lowerSum = 0;
-    const lowerKeys: CategoryKey[] = [
-      'choice',
-      'fourOfAKind',
-      'fullHouse',
-      'smallStraight',
-      'largeStraight',
-      'yacht',
-    ];
-    lowerKeys.forEach((k) => {
-      if (card[k] !== undefined) lowerSum += card[k]!;
-    });
+      return {
+        ...state,
+        phase: 'DECIDING',
+        rollsRemaining: nextRolls,
+        dice: action.finalDice,
+        statusMessage: status,
+      };
+    }
 
-    const total = upperSum + upperBonus + lowerSum;
-    return { upperSum, upperBonus, lowerSum, total };
-  }, []);
+    case 'TOGGLE_DIE_HOLD': {
+      // Guard: can ONLY hold dice in DECIDING phase (not before first roll or during roll)
+      if (state.phase !== 'DECIDING' || state.winner !== null) return state;
 
-  const totalsP1 = useMemo(() => computeTotals(scorecardP1), [scorecardP1, computeTotals]);
-  const totalsP2 = useMemo(() => computeTotals(scorecardP2), [scorecardP2, computeTotals]);
-
-  // Roll action with rolling animation & rapid audio feedback
-  const rollDice = useCallback(() => {
-    if (rollsRemaining <= 0 || winner !== null || isRolling) return;
-
-    setIsRolling(true);
-    triggerHaptic('medium');
-
-    // Rapid audio feedback & interim face jitter
-    let ticks = 0;
-    const rollInterval = setInterval(() => {
-      ticks++;
-      playTapSound();
-      setDice((prev) =>
-        prev.map((die) => (die.held ? die : { ...die, value: Math.floor(Math.random() * 6) + 1 }))
+      const nextDice = state.dice.map((d, i) =>
+        i === action.index ? { ...d, held: !d.held } : d
       );
+      return {
+        ...state,
+        dice: nextDice,
+      };
+    }
 
-      if (ticks >= 6) {
-        clearInterval(rollInterval);
-        // Final roll values
-        setDice((prev) =>
-          prev.map((die) => (die.held ? die : { ...die, value: Math.floor(Math.random() * 6) + 1 }))
-        );
-        setIsRolling(false);
-        triggerHaptic('light');
+    case 'SCORE_CATEGORY': {
+      // Guard: can ONLY score in DECIDING phase
+      if (state.phase !== 'DECIDING' || state.winner !== null) return state;
 
-        const nextRolls = rollsRemaining - 1;
-        setRollsRemaining(nextRolls);
+      const currentCard = state.turn === 1 ? state.scorecardP1 : state.scorecardP2;
+      if (currentCard[action.category] !== undefined) return state;
 
-        if (nextRolls === 0) {
-          setStatusMessage(`No rolls left! Player ${turn}: Tap a category to score.`);
-        } else {
-          setStatusMessage(`Player ${turn}: Hold dice or roll again (${nextRolls} left).`);
+      const nextCard = { ...currentCard, [action.category]: action.score };
+      const newP1Card = state.turn === 1 ? nextCard : state.scorecardP1;
+      const newP2Card = state.turn === 2 ? nextCard : state.scorecardP2;
+
+      // Check Game Over (both players filled all 12 categories)
+      const p1Count = Object.keys(newP1Card).length;
+      const p2Count = Object.keys(newP2Card).length;
+
+      if (p1Count === 12 && p2Count === 12) {
+        const finalP1 = computeTotals(newP1Card).total;
+        const finalP2 = computeTotals(newP2Card).total;
+
+        let winResult: PlayerNumber | 'draw' = 'draw';
+        let endMsg = `Game Over! Tie (${finalP1} - ${finalP2})`;
+        if (finalP1 > finalP2) {
+          winResult = 1;
+          endMsg = `🎉 Player 1 Wins with ${finalP1} points!`;
+        } else if (finalP2 > finalP1) {
+          winResult = 2;
+          endMsg = `🎉 Player 2 Wins with ${finalP2} points!`;
         }
+
+        return {
+          ...state,
+          phase: 'GAME_OVER',
+          scorecardP1: newP1Card,
+          scorecardP2: newP2Card,
+          winner: winResult,
+          statusMessage: endMsg,
+        };
       }
-    }, 75);
-  }, [rollsRemaining, winner, isRolling, turn]);
 
-  // Toggle Hold
-  const toggleHold = useCallback((index: number) => {
-    // Only allow holds after at least 1 roll has been made and while not rolling
-    if (rollsRemaining === 3 || winner !== null || isRolling) return;
+      return {
+        ...state,
+        phase: 'TURN_TRANSITION',
+        scorecardP1: newP1Card,
+        scorecardP2: newP2Card,
+        statusMessage: `Player ${state.turn} scored ${action.score} in ${action.category}!`,
+      };
+    }
 
-    triggerHaptic('light');
-    playTapSound();
+    case 'ADVANCE_TURN': {
+      if (state.phase !== 'TURN_TRANSITION') return state;
+      const nextPlayer: PlayerNumber = state.turn === 1 ? 2 : 1;
+      return {
+        ...state,
+        phase: 'INITIAL_ROLL',
+        turn: nextPlayer,
+        rollsRemaining: 3,
+        dice: [
+          { value: 1, held: false },
+          { value: 2, held: false },
+          { value: 3, held: false },
+          { value: 4, held: false },
+          { value: 5, held: false },
+        ],
+        statusMessage: `Player ${nextPlayer}'s turn. Roll the dice (3 rolls left)`,
+      };
+    }
 
-    setDice((prev) =>
-      prev.map((die, i) => (i === index ? { ...die, held: !die.held } : die))
-    );
-  }, [rollsRemaining, winner, isRolling]);
+    case 'RESTART_GAME':
+      return createInitialYachtState();
 
-  // Select category to score
-  const selectCategory = useCallback((key: CategoryKey) => {
-    if (winner !== null || isRolling) return;
-    if (rollsRemaining === 3) {
-      setStatusMessage('You must roll at least once before scoring!');
-      triggerHaptic('light');
+    default:
+      return state;
+  }
+};
+
+export const YachtDice: React.FC = () => {
+  const { setGameStatus, resetToMenu } = useGame();
+  const [state, dispatch] = useReducer(yachtReducer, undefined, createInitialYachtState);
+
+  const rollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync game status with context
+  useEffect(() => {
+    if (state.phase === 'GAME_OVER') {
+      setGameStatus('finished');
+    } else {
+      setGameStatus('active');
+    }
+  }, [state.phase, setGameStatus]);
+
+  // Turn transition timer
+  useEffect(() => {
+    if (state.phase === 'TURN_TRANSITION') {
+      const timer = setTimeout(() => {
+        dispatch({ type: 'ADVANCE_TURN' });
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, [state.phase]);
+
+  // Clean up roll interval on unmount
+  useEffect(() => {
+    return () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    };
+  }, []);
+
+  const totalsP1 = useMemo(() => computeTotals(state.scorecardP1), [state.scorecardP1]);
+  const totalsP2 = useMemo(() => computeTotals(state.scorecardP2), [state.scorecardP2]);
+
+  // Roll dice action
+  const rollDice = useCallback(() => {
+    if (
+      (state.phase !== 'INITIAL_ROLL' && state.phase !== 'DECIDING') ||
+      state.rollsRemaining <= 0 ||
+      state.winner !== null
+    ) {
       return;
     }
 
-    const currentCard = turn === 1 ? scorecardP1 : scorecardP2;
+    dispatch({ type: 'START_ROLL' });
+    triggerHaptic('medium');
+
+    let ticks = 0;
+    rollIntervalRef.current = setInterval(() => {
+      ticks++;
+      playTapSound();
+
+      const jitter = state.dice.map((die) =>
+        die.held ? die : { ...die, value: Math.floor(Math.random() * 6) + 1 }
+      );
+      dispatch({ type: 'SET_JITTER_DICE', dice: jitter });
+
+      if (ticks >= 6) {
+        if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+        const finalDice = state.dice.map((die) =>
+          die.held ? die : { ...die, value: Math.floor(Math.random() * 6) + 1 }
+        );
+        triggerHaptic('light');
+        dispatch({ type: 'FINISH_ROLL', finalDice });
+      }
+    }, 75);
+  }, [state.phase, state.rollsRemaining, state.winner, state.dice]);
+
+  // Toggle Die Hold
+  const toggleHold = useCallback((index: number) => {
+    if (state.phase !== 'DECIDING') return;
+    triggerHaptic('light');
+    playTapSound();
+    dispatch({ type: 'TOGGLE_DIE_HOLD', index });
+  }, [state.phase]);
+
+  // Select Category to score
+  const selectCategory = useCallback((key: CategoryKey) => {
+    if (state.phase !== 'DECIDING') return;
+
+    const currentCard = state.turn === 1 ? state.scorecardP1 : state.scorecardP2;
     if (currentCard[key] !== undefined) {
-      setStatusMessage('Category already filled! Select another.');
       triggerHaptic('light');
       return;
     }
@@ -220,84 +395,18 @@ export const YachtDice: React.FC = () => {
     triggerHaptic('medium');
     playCaptureSound();
 
-    const diceValues = dice.map((d) => d.value);
+    const diceValues = state.dice.map((d) => d.value);
     const scoreAwarded = calculateScore(key, diceValues);
+    dispatch({ type: 'SCORE_CATEGORY', category: key, score: scoreAwarded });
+  }, [state.phase, state.turn, state.scorecardP1, state.scorecardP2, state.dice]);
 
-    const nextCard = { ...currentCard, [key]: scoreAwarded };
-    if (turn === 1) setScorecardP1(nextCard);
-    else setScorecardP2(nextCard);
-
-    // Check if game has finished (both players filled all 12 categories)
-    const p1Keys = Object.keys(turn === 1 ? nextCard : scorecardP1).length;
-    const p2Keys = Object.keys(turn === 2 ? nextCard : scorecardP2).length;
-
-    if (p1Keys === 12 && p2Keys === 12) {
-      // Calculate final totals
-      const finalP1 = computeTotals(turn === 1 ? nextCard : scorecardP1).total;
-      const finalP2 = computeTotals(turn === 2 ? nextCard : scorecardP2).total;
-
-      let winResult: PlayerNumber | 'draw' = 'draw';
-      let endMsg = `Game Over! Tie (${finalP1} - ${finalP2})`;
-      if (finalP1 > finalP2) {
-        winResult = 1;
-        endMsg = `🎉 Player 1 Wins with ${finalP1} points!`;
-      } else if (finalP2 > finalP1) {
-        winResult = 2;
-        endMsg = `🎉 Player 2 Wins with ${finalP2} points!`;
-      }
-
-      setWinner(winResult);
-      setStatusMessage(endMsg);
-      setGameStatus('finished');
-      return;
-    }
-
-    // Switch turn smoothly
-    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-    setTurn(nextPlayer);
-    setRollsRemaining(3);
-    setDice([
-      { value: 1, held: false },
-      { value: 2, held: false },
-      { value: 3, held: false },
-      { value: 4, held: false },
-      { value: 5, held: false },
-    ]);
-    setGameStatus('active');
-    setStatusMessage(`Player ${nextPlayer}'s turn. Roll the dice (3 rolls left)`);
-  }, [
-    winner,
-    isRolling,
-    rollsRemaining,
-    turn,
-    scorecardP1,
-    scorecardP2,
-    dice,
-    calculateScore,
-    computeTotals,
-    setGameStatus,
-  ]);
-
+  // Reset Game
   const resetGame = useCallback(() => {
-    setScorecardP1({});
-    setScorecardP2({});
-    setDice([
-      { value: 1, held: false },
-      { value: 2, held: false },
-      { value: 3, held: false },
-      { value: 4, held: false },
-      { value: 5, held: false },
-    ]);
-    setRollsRemaining(3);
-    setTurn(1);
-    setWinner(null);
-    setStatusMessage('Player 1: Roll the dice (3 rolls left)');
-    setShowTurnTransition(false);
-    setIsRolling(false);
-    setGameStatus('active');
-  }, [setGameStatus]);
+    if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    dispatch({ type: 'RESTART_GAME' });
+  }, []);
 
-  // SVG Die Face renderer with soft corners, recessed pips, and glossy face reflection
+  // SVG Die Face renderer
   const renderDieFace = (value: number) => {
     const pipCoords: Record<number, [number, number][]> = {
       1: [[50, 50]],
@@ -313,13 +422,11 @@ export const YachtDice: React.FC = () => {
     return (
       <svg viewBox="0 0 100 100" className="w-full h-full pointer-events-none select-none">
         <defs>
-          {/* Deep recessed pip gradient */}
           <radialGradient id={`yachtPip-${value}`} cx="45%" cy="40%" r="60%">
             <stop offset="0%" stopColor={value === 1 ? '#ef4444' : '#1e293b'} />
             <stop offset="70%" stopColor={value === 1 ? '#b91c1c' : '#0f172a'} />
             <stop offset="100%" stopColor="#000000" />
           </radialGradient>
-          {/* Acrylic glossy face sweep */}
           <linearGradient id={`yachtSheen-${value}`} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
             <stop offset="35%" stopColor="#ffffff" stopOpacity="0.25" />
@@ -327,7 +434,6 @@ export const YachtDice: React.FC = () => {
           </linearGradient>
         </defs>
 
-        {/* Soft rounded acrylic cube body */}
         <rect
           x="4"
           y="4"
@@ -339,26 +445,21 @@ export const YachtDice: React.FC = () => {
           strokeWidth="2.5"
         />
 
-        {/* Glossy face reflection sweep */}
         <path
           d="M 4 22 Q 4 4 22 4 L 75 4 Q 4 4 4 75 Z"
           fill={`url(#yachtSheen-${value})`}
           pointerEvents="none"
         />
 
-        {/* Deep recessed circular pips with inner shading */}
         {pips.map(([cx, cy], i) => (
           <g key={i}>
-            {/* Pip recess shadow */}
             <circle cx={cx} cy={cy + 0.8} r={value === 1 ? 12.5 : 8.8} fill="rgba(0,0,0,0.35)" />
-            {/* Pip fill */}
             <circle
               cx={cx}
               cy={cy}
               r={value === 1 ? 12 : 8.2}
               fill={`url(#yachtPip-${value})`}
             />
-            {/* Pip highlight */}
             <circle cx={cx - 2} cy={cy - 2} r="1.5" fill="#ffffff" opacity="0.6" />
           </g>
         ))}
@@ -366,24 +467,25 @@ export const YachtDice: React.FC = () => {
     );
   };
 
-  const activeCard = turn === 1 ? scorecardP1 : scorecardP2;
-  const currentDiceValues = useMemo(() => dice.map((d) => d.value), [dice]);
+  const activeCard = state.turn === 1 ? state.scorecardP1 : state.scorecardP2;
+  const currentDiceValues = useMemo(() => state.dice.map((d) => d.value), [state.dice]);
+  const isRolling = state.phase === 'ROLLING';
 
   return (
     <div className="flex flex-col h-full w-full justify-between overflow-hidden">
       <GameHeader
         title="Yacht Dice"
         subtitle="12-Category Classic"
-        turn={turn}
+        turn={state.turn}
         scoreP1={totalsP1.total}
         scoreP2={totalsP2.total}
         p1Label="P1 Score"
         p2Label="P2 Score"
         onRestart={resetGame}
-        statusMessage={statusMessage}
+        statusMessage={state.statusMessage}
       />
 
-      {/* Main Container: Split Layout with Dice on Left, Scorecard on Right - Responsive on iPhone, iPad, PC */}
+      {/* Main Container: Split Layout with Dice on Left, Scorecard on Right */}
       <main className="flex-1 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden select-none">
         <div className="w-full max-w-md sm:max-w-2xl md:max-w-3xl h-full flex flex-row gap-2 sm:gap-4 overflow-hidden">
           {/* LEFT COLUMN: Vertical Dice Tray & Roll Controls */}
@@ -393,176 +495,245 @@ export const YachtDice: React.FC = () => {
                 Dice
               </span>
               <span className="text-[9px] sm:text-[10px] font-semibold text-amber-400 block leading-tight">
-                {rollsRemaining < 3 ? 'Tap to hold' : 'Roll to start'}
+                {state.phase === 'INITIAL_ROLL'
+                  ? 'Roll to start'
+                  : state.phase === 'DECIDING'
+                  ? 'Tap to hold'
+                  : isRolling
+                  ? 'Rolling...'
+                  : 'Turn ended'}
               </span>
             </div>
 
             {/* 5 Vertical Dice Stack in Physical Tray */}
             <div className="flex flex-col justify-around items-center w-full flex-1 py-1 gap-1.5 sm:gap-2.5">
-              {dice.map((die, idx) => (
+              {state.dice.map((die, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => toggleHold(idx)}
-                  disabled={rollsRemaining === 3 || winner !== null || isRolling}
+                  disabled={state.phase !== 'DECIDING'}
                   className={`relative w-12 h-12 sm:w-16 sm:h-16 md:w-18 md:h-18 rounded-2xl sm:rounded-3xl p-1 sm:p-1.5 transition-spring duration-200 ${
-                  die.held
-                    ? 'translate-x-1.5 -translate-y-1 ring-3 ring-amber-400 scale-105 bg-amber-50 table-lifted'
-                    : 'bg-white table-flat hover:scale-102 active:scale-95'
-                } ${isRolling && !die.held ? 'animate-dice-roll' : ''}`}
-                aria-label={`Die ${idx + 1}: ${die.value} ${die.held ? 'held' : ''}`}
+                    die.held
+                      ? 'translate-x-1.5 -translate-y-1 ring-3 ring-amber-400 scale-105 bg-amber-50 table-lifted'
+                      : 'bg-white table-flat hover:scale-102 active:scale-95'
+                  } ${isRolling && !die.held ? 'animate-dice-roll' : ''} ${
+                    state.phase !== 'DECIDING' ? 'cursor-default' : 'cursor-pointer'
+                  }`}
+                  aria-label={`Die ${idx + 1}: ${die.value} ${die.held ? 'held' : ''}`}
+                >
+                  {renderDieFace(die.value)}
+                  {die.held && (
+                    <span className="absolute -top-1.5 -right-1 bg-amber-500 text-black text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-md uppercase tracking-tighter ring-1 ring-white">
+                      HELD
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Roll Button at Bottom of Left Column */}
+            <div className="w-full pt-1">
+              <button
+                onClick={rollDice}
+                type="button"
+                disabled={
+                  (state.phase !== 'INITIAL_ROLL' && state.phase !== 'DECIDING') ||
+                  state.rollsRemaining <= 0 ||
+                  state.winner !== null
+                }
+                className={`w-full py-2.5 sm:py-3 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider flex flex-col items-center justify-center gap-0.5 shadow-md transition-all ${
+                  (state.phase === 'INITIAL_ROLL' || state.phase === 'DECIDING') &&
+                  state.rollsRemaining > 0 &&
+                  state.winner === null
+                    ? state.turn === 1
+                      ? 'bg-player-1 hover:bg-blue-600 text-white active:scale-95 shadow-blue-500/30 cursor-pointer'
+                      : 'bg-player-2 hover:bg-red-600 text-white active:scale-95 shadow-red-500/30 cursor-pointer'
+                    : 'bg-gray-600 text-gray-300 opacity-50 cursor-not-allowed'
+                }`}
               >
-                {renderDieFace(die.value)}
-                {die.held && (
-                  <span className="absolute -top-1.5 -right-1 bg-amber-500 text-black text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-md uppercase tracking-tighter ring-1 ring-white">
-                    HELD
-                  </span>
-                )}
+                <svg className={`w-4 h-4 ${isRolling ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                </svg>
+                <span className="leading-none">{isRolling ? 'Rolling...' : 'Roll'}</span>
+                <span className="text-[8px] opacity-80 leading-none">({state.rollsRemaining} left)</span>
               </button>
-            ))}
+            </div>
           </div>
 
-          {/* Roll Button at Bottom of Left Column */}
-          <div className="w-full pt-1">
-            <button
-              onClick={rollDice}
-              type="button"
-              disabled={rollsRemaining <= 0 || winner !== null || isRolling}
-              className={`w-full py-2.5 sm:py-3 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider flex flex-col items-center justify-center gap-0.5 shadow-md transition-all ${
-                rollsRemaining > 0 && winner === null && !isRolling
-                  ? turn === 1
-                    ? 'bg-player-1 hover:bg-blue-600 text-white active:scale-95 shadow-blue-500/30'
-                    : 'bg-player-2 hover:bg-red-600 text-white active:scale-95 shadow-red-500/30'
-                  : 'bg-gray-600 text-gray-300 opacity-50 cursor-not-allowed'
-              }`}
-            >
-              <svg className={`w-4 h-4 ${isRolling ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
-              <span className="leading-none">{isRolling ? 'Rolling...' : 'Roll'}</span>
-              <span className="text-[8px] opacity-80 leading-none">({rollsRemaining} left)</span>
-            </button>
-          </div>
-        </div>
+          {/* RIGHT COLUMN: Yacht Scorecard Paper Table */}
+          <div className="flex-1 flex flex-col justify-between bg-[#fdfaf5] rounded-3xl p-2.5 sm:p-3 border-2 border-[#d8c3a5]/80 table-flat text-container-dark text-xs overflow-hidden">
+            {/* Header Row */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-[#2a2e33]/20 font-black tracking-wider text-[11px] sm:text-xs">
+              <span className="w-1/3">Category</span>
+              <span className={`w-1/3 text-center ${state.turn === 1 ? 'text-player-1 font-black underline' : 'text-stone-600'}`}>
+                P1 {state.turn === 1 && '★'}
+              </span>
+              <span className={`w-1/3 text-center ${state.turn === 2 ? 'text-player-2 font-black underline' : 'text-stone-600'}`}>
+                P2 {state.turn === 2 && '★'}
+              </span>
+            </div>
 
-        {/* RIGHT COLUMN: Yacht Scorecard Paper Table */}
-        <div className="flex-1 flex flex-col justify-between bg-[#fdfaf5] rounded-3xl p-2.5 sm:p-3 border-2 border-[#d8c3a5]/80 table-flat text-container-dark text-xs overflow-hidden">
-          {/* Header Row */}
-          <div className="grid grid-cols-12 gap-1 text-[11px] sm:text-xs font-extrabold pb-1.5 border-b border-[#2a2e33]/15 text-[#6e5845] uppercase tracking-wide">
-            <span className="col-span-6">Category</span>
-            <span className="col-span-3 text-center text-player-1 font-black">P1</span>
-            <span className="col-span-3 text-center text-player-2 font-black">P2</span>
-          </div>
+            {/* Scorecard Rows Scrollable */}
+            <div className="flex-1 overflow-y-auto py-1 space-y-0.5 scrollbar-none">
+              {/* Upper Section */}
+              <div className="text-[9px] font-black uppercase tracking-wider text-[#7d6753] pt-0.5">
+                Upper Section
+              </div>
+              {CATEGORIES.filter((c) => c.section === 'upper').map((cat) => {
+                const p1Val = state.scorecardP1[cat.key];
+                const p2Val = state.scorecardP2[cat.key];
+                const isFilled = activeCard[cat.key] !== undefined;
+                const canSelect = state.phase === 'DECIDING' && !isFilled && state.winner === null;
+                const potentialScore = calculateScore(cat.key, currentDiceValues);
 
-          {/* Categories List (Scrollable if needed, fits easily in vertical view) */}
-          <div className="divide-y divide-[#2a2e33]/10 overflow-y-auto flex-1 pr-1 py-0.5 scrollbar-none">
-            {CATEGORIES.map((cat, idx) => {
-              const p1Score = scorecardP1[cat.key];
-              const p2Score = scorecardP2[cat.key];
-              const isTurnCategory = activeCard[cat.key] === undefined && rollsRemaining < 3 && winner === null && !isRolling;
-              const previewScore = isTurnCategory ? calculateScore(cat.key, currentDiceValues) : null;
-              const isUpperDivider = idx === 5; // Visual separator between upper and lower section
-
-              return (
-                <div key={cat.key}>
+                return (
                   <div
-                    onClick={() => isTurnCategory && selectCategory(cat.key)}
-                    className={`grid grid-cols-12 gap-1 py-1 sm:py-1.5 px-1.5 rounded-xl items-center transition-all ${
-                      isTurnCategory
-                        ? 'hover:bg-amber-200/60 active:bg-amber-300/80 cursor-pointer bg-white/40 shadow-sm border border-amber-200/50'
-                        : 'opacity-90'
+                    key={cat.key}
+                    onClick={() => canSelect && selectCategory(cat.key)}
+                    className={`flex items-center justify-between py-1 px-1.5 rounded-lg border transition-all ${
+                      canSelect
+                        ? 'hover:bg-amber-100/80 cursor-pointer border-dashed border-amber-400 bg-amber-50/40'
+                        : 'border-transparent'
                     }`}
                   >
-                    <div className="col-span-6 flex flex-col">
-                      <span className="font-bold text-[11px] sm:text-xs leading-tight text-container-dark">
-                        {cat.name}
-                      </span>
-                      <span className="text-[9px] text-[#846b54] truncate">{cat.desc}</span>
+                    <div className="w-1/3 flex flex-col leading-none">
+                      <span className="font-bold text-[11px] sm:text-xs">{cat.name}</span>
+                      <span className="text-[8px] text-[#7d6753] truncate">{cat.desc}</span>
                     </div>
 
-                    {/* Player 1 Column */}
-                    <div className="col-span-3 text-center font-bold">
-                      {p1Score !== undefined ? (
-                        <span className="text-container-dark text-xs sm:text-sm font-black">{p1Score}</span>
-                      ) : turn === 1 && previewScore !== null ? (
-                        <span className="text-player-1 font-black text-[11px] sm:text-xs bg-blue-100/90 px-1.5 py-0.5 rounded-md border border-blue-300 animate-pulse inline-block">
-                          +{previewScore}
-                        </span>
+                    {/* P1 Value or preview */}
+                    <div className="w-1/3 text-center font-mono-digital font-black text-xs">
+                      {p1Val !== undefined ? (
+                        <span className="text-player-1">{p1Val}</span>
+                      ) : state.turn === 1 && canSelect ? (
+                        <span className="text-amber-600/70 font-semibold text-[10px]">+{potentialScore}</span>
                       ) : (
-                        <span className="text-gray-300 font-light">-</span>
+                        <span className="text-stone-300">-</span>
                       )}
                     </div>
 
-                    {/* Player 2 Column */}
-                    <div className="col-span-3 text-center font-bold">
-                      {p2Score !== undefined ? (
-                        <span className="text-container-dark text-xs sm:text-sm font-black">{p2Score}</span>
-                      ) : turn === 2 && previewScore !== null ? (
-                        <span className="text-player-2 font-black text-[11px] sm:text-xs bg-red-100/90 px-1.5 py-0.5 rounded-md border border-red-300 animate-pulse inline-block">
-                          +{previewScore}
-                        </span>
+                    {/* P2 Value or preview */}
+                    <div className="w-1/3 text-center font-mono-digital font-black text-xs">
+                      {p2Val !== undefined ? (
+                        <span className="text-player-2">{p2Val}</span>
+                      ) : state.turn === 2 && canSelect ? (
+                        <span className="text-amber-600/70 font-semibold text-[10px]">+{potentialScore}</span>
                       ) : (
-                        <span className="text-gray-300 font-light">-</span>
+                        <span className="text-stone-300">-</span>
                       )}
                     </div>
                   </div>
+                );
+              })}
 
-                  {/* Upper Section Bonus Preview Bar */}
-                  {isUpperDivider && (
-                    <div className="my-1 py-0.5 px-2 bg-[#2a2e33]/5 rounded-lg flex items-center justify-between text-[10px] font-bold text-[#6e5845]">
-                      <span>Upper Bonus (&ge;63 &rarr; +35)</span>
-                      <div className="flex gap-4">
-                        <span className="text-player-1">{totalsP1.upperSum}/63 {totalsP1.upperBonus > 0 && '✓'}</span>
-                        <span className="text-player-2">{totalsP2.upperSum}/63 {totalsP2.upperBonus > 0 && '✓'}</span>
-                      </div>
+              {/* Upper Bonus Subtotal Bar */}
+              <div className="flex items-center justify-between py-0.5 px-1.5 bg-[#ebdcc9]/50 rounded-md text-[10px] font-bold border border-[#d8c3a5]/40">
+                <span className="w-1/3 text-[#7d6753]">Bonus (63+ &#8594; +35)</span>
+                <span className="w-1/3 text-center font-mono-digital font-black text-player-1">
+                  {totalsP1.upperSum}/63 {totalsP1.upperBonus > 0 && '(+35)'}
+                </span>
+                <span className="w-1/3 text-center font-mono-digital font-black text-player-2">
+                  {totalsP2.upperSum}/63 {totalsP2.upperBonus > 0 && '(+35)'}
+                </span>
+              </div>
+
+              {/* Lower Section */}
+              <div className="text-[9px] font-black uppercase tracking-wider text-[#7d6753] pt-1">
+                Lower Section
+              </div>
+              {CATEGORIES.filter((c) => c.section === 'lower').map((cat) => {
+                const p1Val = state.scorecardP1[cat.key];
+                const p2Val = state.scorecardP2[cat.key];
+                const isFilled = activeCard[cat.key] !== undefined;
+                const canSelect = state.phase === 'DECIDING' && !isFilled && state.winner === null;
+                const potentialScore = calculateScore(cat.key, currentDiceValues);
+
+                return (
+                  <div
+                    key={cat.key}
+                    onClick={() => canSelect && selectCategory(cat.key)}
+                    className={`flex items-center justify-between py-1 px-1.5 rounded-lg border transition-all ${
+                      canSelect
+                        ? 'hover:bg-amber-100/80 cursor-pointer border-dashed border-amber-400 bg-amber-50/40'
+                        : 'border-transparent'
+                    }`}
+                  >
+                    <div className="w-1/3 flex flex-col leading-none">
+                      <span className="font-bold text-[11px] sm:text-xs">{cat.name}</span>
+                      <span className="text-[8px] text-[#7d6753] truncate">{cat.desc}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
-          {/* Total Sums Footer in Scorecard */}
-          <div className="pt-1.5 border-t border-[#2a2e33]/20 flex items-center justify-between text-xs font-black">
-            <span className="text-[#6e5845] uppercase tracking-wider text-[10px] sm:text-[11px]">
-              Total Score
-            </span>
-            <div className="flex gap-4 pr-2">
-              <span className="text-player-1 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                P1: {totalsP1.total}
+                    {/* P1 Value or preview */}
+                    <div className="w-1/3 text-center font-mono-digital font-black text-xs">
+                      {p1Val !== undefined ? (
+                        <span className="text-player-1">{p1Val}</span>
+                      ) : state.turn === 1 && canSelect ? (
+                        <span className="text-amber-600/70 font-semibold text-[10px]">+{potentialScore}</span>
+                      ) : (
+                        <span className="text-stone-300">-</span>
+                      )}
+                    </div>
+
+                    {/* P2 Value or preview */}
+                    <div className="w-1/3 text-center font-mono-digital font-black text-xs">
+                      {p2Val !== undefined ? (
+                        <span className="text-player-2">{p2Val}</span>
+                      ) : state.turn === 2 && canSelect ? (
+                        <span className="text-amber-600/70 font-semibold text-[10px]">+{potentialScore}</span>
+                      ) : (
+                        <span className="text-stone-300">-</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Grand Total Footer Row */}
+            <div className="flex items-center justify-between pt-1.5 border-t-2 border-[#2a2e33]/30 font-black text-xs sm:text-sm bg-container-dark text-accent-light px-2.5 py-1.5 rounded-xl shadow-inner shrink-0">
+              <span className="w-1/3 uppercase tracking-wider text-[10px] sm:text-xs">
+                Total
               </span>
-              <span className="text-player-2 bg-red-50 px-2 py-0.5 rounded-md border border-red-200">
-                P2: {totalsP2.total}
+              <span className="w-1/3 text-center font-mono-digital font-black text-blue-300">
+                {totalsP1.total}
+              </span>
+              <span className="w-1/3 text-center font-mono-digital font-black text-rose-300">
+                {totalsP2.total}
               </span>
             </div>
           </div>
         </div>
-        </div>
       </main>
 
-      {/* Footer Safe Area */}
+      {/* Footer Instructions */}
       <footer className="pb-safe px-4 py-1.5 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753]">
-        <span>Tap an open category row to lock in score</span>
+        <span>Roll up to 3 times per turn • Tap open scorecard row to score</span>
         <span className="text-[11px] bg-accent-light px-2.5 py-0.5 rounded-full border border-[#d8c3a5]/50">
           Target: High Score
         </span>
       </footer>
 
       {/* Game Over Modal */}
-      {winner !== null && (
+      {state.winner !== null && (
         <GameOverModal
-          winner={winner}
+          winner={state.winner}
           gameName="Yacht Dice"
           stats={[
             {
-              label: 'Total Score',
-              p1Value: `${totalsP1.total} pts`,
-              p2Value: `${totalsP2.total} pts`,
+              label: 'Final Score',
+              p1Value: `${totalsP1.total} Pts`,
+              p2Value: `${totalsP2.total} Pts`,
             },
             {
-              label: 'Upper Bonus (+35)',
-              p1Value: totalsP1.upperBonus > 0 ? 'Achieved' : 'Missed',
-              p2Value: totalsP2.upperBonus > 0 ? 'Achieved' : 'Missed',
+              label: 'Upper Bonus',
+              p1Value: totalsP1.upperBonus > 0 ? '+35 Pts' : '0 Pts',
+              p2Value: totalsP2.upperBonus > 0 ? '+35 Pts' : '0 Pts',
+            },
+            {
+              label: 'Yacht 50s',
+              p1Value: state.scorecardP1.yacht === 50 ? 'Achieved' : 'None',
+              p2Value: state.scorecardP2.yacht === 50 ? 'Achieved' : 'None',
             },
           ]}
           onRestart={resetGame}
@@ -572,3 +743,5 @@ export const YachtDice: React.FC = () => {
     </div>
   );
 };
+
+export default YachtDice;
