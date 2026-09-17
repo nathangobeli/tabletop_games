@@ -370,47 +370,47 @@ export const Mancala: React.FC = () => {
       />
 
       {/* Mancala Playing Board Container - Scalable across iPhone, iPad, and PC */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-hidden">
-        <div className="w-full max-w-sm sm:max-w-xl md:max-w-2xl bg-gradient-to-br from-[#d4a373] via-[#c59160] to-[#b88655] border-4 sm:border-6 border-[#8c5932] rounded-[36px] sm:rounded-[44px] clubhouse-board-depth table-flat p-3 sm:p-5 flex flex-col justify-between gap-2.5 sm:gap-4 relative transition-all">
+      <main className="flex-1 min-h-0 w-full flex flex-col items-center justify-center p-1.5 sm:p-3 md:p-4 overflow-hidden">
+        <div className="w-full max-w-sm sm:max-w-xl md:max-w-2xl landscape:w-auto landscape:max-w-none landscape:h-full max-h-full aspect-[2.3/1] bg-gradient-to-br from-[#d4a373] via-[#c59160] to-[#b88655] border-3 sm:border-5 border-[#8c5932] rounded-3xl sm:rounded-[40px] clubhouse-board-depth table-flat p-2 sm:p-4 flex flex-col justify-between gap-1 sm:gap-2.5 relative transition-all shrink-0">
           
           {/* Wooden Bevel & Grain Overlay */}
-          <div className="absolute inset-0 rounded-[32px] sm:rounded-[40px] bg-gradient-to-tr from-black/25 via-transparent to-white/20 pointer-events-none" />
+          <div className="absolute inset-0 rounded-3xl sm:rounded-[36px] bg-gradient-to-tr from-black/25 via-transparent to-white/20 pointer-events-none" />
 
           {/* Top Label: Player 2 indicator */}
-          <div className="flex items-center justify-between px-3 text-[11px] sm:text-xs font-black tracking-wider uppercase z-10">
+          <div className="flex items-center justify-between px-2 text-[10px] sm:text-xs font-black tracking-wider uppercase z-10 shrink-0">
             <span className={`flex items-center gap-1.5 ${turn === 2 ? 'text-player-2 animate-pulse' : 'text-stone-900/80'}`}>
               <span className="w-2.5 h-2.5 rounded-full bg-player-2 ring-2 ring-player-2/40" />
               Player 2 Pits (Top)
             </span>
-            <span className="text-stone-900 font-bold bg-white/40 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-white/30 shadow-sm">
+            <span className="text-stone-900 font-bold bg-white/40 backdrop-blur-xs px-2 py-0.5 rounded-full border border-white/30 shadow-sm text-[10px] sm:text-xs">
               P2 Store: {board[13]}
             </span>
           </div>
 
           {/* Main Mancala Trough Layout */}
-          <div className="flex items-center justify-between gap-2 sm:gap-3.5 z-10">
+          <div className="flex-1 min-h-0 flex items-center justify-between gap-1.5 sm:gap-3 z-10 py-0.5">
             {/* Player 2 Store (Left) - Carved Deep Oval Hollow */}
             <div 
               style={{ background: 'radial-gradient(ellipse at 45% 35%, #42220d 0%, #241105 75%, #5a3014 100%)' }}
-              className={`flex flex-col items-center justify-center w-14 sm:w-20 md:w-24 h-48 sm:h-64 md:h-72 rounded-full p-1.5 sm:p-2 border-2 sm:border-3 border-[#241105] table-recess relative transition-transform ${
+              className={`flex flex-col items-center justify-center w-12 sm:w-16 md:w-20 h-full max-h-full aspect-[1/2.2] rounded-full p-1 sm:p-1.5 border-2 sm:border-3 border-[#241105] table-recess relative transition-transform shrink-0 ${
                 activeDropPit === 13 ? 'scale-105 animate-pit-drop ring-4 ring-player-2' : ''
               }`}
             >
-              <span className="absolute top-2 sm:top-3 text-[10px] sm:text-xs font-black text-player-2 tracking-widest uppercase">
+              <span className="absolute top-1.5 sm:top-2 text-[9px] sm:text-[10px] font-black text-player-2 tracking-widest uppercase">
                 P2
               </span>
               <svg viewBox="0 0 100 100" className="w-full h-full">
                 {renderMarbles(board[13], true, activeDropPit === 13)}
               </svg>
-              <div className="absolute bottom-2 sm:bottom-3 bg-black/75 text-white font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full border border-white/20 shadow-md">
+              <div className="absolute bottom-1.5 sm:bottom-2 bg-black/75 text-white font-black text-[10px] sm:text-xs px-2 py-0.2 rounded-full border border-white/20 shadow-md">
                 {board[13]}
               </div>
             </div>
 
             {/* Central 2x6 Pit Grid */}
-            <div className="flex-1 flex flex-col justify-between gap-2.5 sm:gap-4 h-48 sm:h-64 md:h-72">
+            <div className="flex-1 min-h-0 flex flex-col justify-around gap-1 sm:gap-2.5 h-full">
               {/* Row 2: Player 2 Pits (12 downto 7 from left to right) */}
-              <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5">
+              <div className="grid grid-cols-6 gap-1 sm:gap-2">
                 {[12, 11, 10, 9, 8, 7].map((pitIndex) => {
                   const playable = isPlayablePit(pitIndex);
                   const isDropping = activeDropPit === pitIndex;
@@ -421,7 +421,7 @@ export const Mancala: React.FC = () => {
                       onClick={() => handlePitClick(pitIndex)}
                       disabled={!playable}
                       style={{ background: 'radial-gradient(circle at 45% 35%, #42220d 0%, #241105 75%, #5a3014 100%)' }}
-                      className={`relative aspect-square rounded-full flex flex-col items-center justify-center p-1 sm:p-1.5 border-2 sm:border-3 table-recess transition-all duration-150 ${
+                      className={`relative aspect-square rounded-full flex flex-col items-center justify-center p-0.5 sm:p-1 border-2 sm:border-3 table-recess transition-all duration-150 ${
                         isDropping
                           ? 'border-amber-300 ring-4 ring-amber-400 scale-110 animate-pit-drop z-20'
                           : playable
@@ -433,7 +433,7 @@ export const Mancala: React.FC = () => {
                       <svg viewBox="0 0 100 100" className="w-full h-full">
                         {renderMarbles(board[pitIndex], false, isDropping)}
                       </svg>
-                      <span className="absolute bottom-0.5 sm:bottom-1 text-[10px] sm:text-xs md:text-sm font-black text-white bg-black/75 px-1.5 sm:px-2 py-0.2 rounded-full border border-white/20 shadow-sm">
+                      <span className="absolute bottom-0.5 text-[9px] sm:text-xs font-black text-white bg-black/75 px-1 sm:px-1.5 py-0.2 rounded-full border border-white/20 shadow-sm">
                         {board[pitIndex]}
                       </span>
                     </button>
@@ -442,7 +442,7 @@ export const Mancala: React.FC = () => {
               </div>
 
               {/* Row 1: Player 1 Pits (0 upto 5 from left to right) */}
-              <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5">
+              <div className="grid grid-cols-6 gap-1 sm:gap-2">
                 {[0, 1, 2, 3, 4, 5].map((pitIndex) => {
                   const playable = isPlayablePit(pitIndex);
                   const isDropping = activeDropPit === pitIndex;
@@ -453,7 +453,7 @@ export const Mancala: React.FC = () => {
                       onClick={() => handlePitClick(pitIndex)}
                       disabled={!playable}
                       style={{ background: 'radial-gradient(circle at 45% 35%, #42220d 0%, #241105 75%, #5a3014 100%)' }}
-                      className={`relative aspect-square rounded-full flex flex-col items-center justify-center p-1 sm:p-1.5 border-2 sm:border-3 table-recess transition-all duration-150 ${
+                      className={`relative aspect-square rounded-full flex flex-col items-center justify-center p-0.5 sm:p-1 border-2 sm:border-3 table-recess transition-all duration-150 ${
                         isDropping
                           ? 'border-amber-300 ring-4 ring-amber-400 scale-110 animate-pit-drop z-20'
                           : playable
@@ -465,7 +465,7 @@ export const Mancala: React.FC = () => {
                       <svg viewBox="0 0 100 100" className="w-full h-full">
                         {renderMarbles(board[pitIndex], false, isDropping)}
                       </svg>
-                      <span className="absolute bottom-0.5 sm:bottom-1 text-[10px] sm:text-xs md:text-sm font-black text-white bg-black/75 px-1.5 sm:px-2 py-0.2 rounded-full border border-white/20 shadow-sm">
+                      <span className="absolute bottom-0.5 text-[9px] sm:text-xs font-black text-white bg-black/75 px-1 sm:px-1.5 py-0.2 rounded-full border border-white/20 shadow-sm">
                         {board[pitIndex]}
                       </span>
                     </button>
@@ -477,41 +477,41 @@ export const Mancala: React.FC = () => {
             {/* Player 1 Store (Right) - Carved Deep Oval Hollow */}
             <div 
               style={{ background: 'radial-gradient(ellipse at 45% 35%, #42220d 0%, #241105 75%, #5a3014 100%)' }}
-              className={`flex flex-col items-center justify-center w-14 sm:w-20 md:w-24 h-48 sm:h-64 md:h-72 rounded-full p-1.5 sm:p-2 border-2 sm:border-3 border-[#241105] table-recess relative transition-transform ${
+              className={`flex flex-col items-center justify-center w-12 sm:w-16 md:w-20 h-full max-h-full aspect-[1/2.2] rounded-full p-1 sm:p-1.5 border-2 sm:border-3 border-[#241105] table-recess relative transition-transform shrink-0 ${
                 activeDropPit === 6 ? 'scale-105 animate-pit-drop ring-4 ring-player-1' : ''
               }`}
             >
-              <span className="absolute top-2 sm:top-3 text-[10px] sm:text-xs font-black text-player-1 tracking-widest uppercase">
+              <span className="absolute top-1.5 sm:top-2 text-[9px] sm:text-[10px] font-black text-player-1 tracking-widest uppercase">
                 P1
               </span>
               <svg viewBox="0 0 100 100" className="w-full h-full">
                 {renderMarbles(board[6], true, activeDropPit === 6)}
               </svg>
-              <div className="absolute bottom-2 sm:bottom-3 bg-black/75 text-white font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full border border-white/20 shadow-md">
+              <div className="absolute bottom-1.5 sm:bottom-2 bg-black/75 text-white font-black text-[10px] sm:text-xs px-2 py-0.2 rounded-full border border-white/20 shadow-md">
                 {board[6]}
               </div>
             </div>
           </div>
 
           {/* Bottom Label: Player 1 indicator */}
-          <div className="flex items-center justify-between px-3 text-[11px] sm:text-xs font-black tracking-wider uppercase">
-            <span className={`flex items-center gap-1.5 ${turn === 1 ? 'text-player-1 animate-pulse' : 'text-white/60'}`}>
+          <div className="flex items-center justify-between px-2 text-[10px] sm:text-xs font-black tracking-wider uppercase z-10 shrink-0">
+            <span className={`flex items-center gap-1.5 ${turn === 1 ? 'text-player-1 animate-pulse' : 'text-stone-900/80'}`}>
               <span className="w-2.5 h-2.5 rounded-full bg-player-1 ring-2 ring-player-1/40" />
               Player 1 Pits (Bottom)
             </span>
-            <span className="text-white/80 font-bold">
-              Store: {board[6]}
+            <span className="text-stone-900 font-bold bg-white/40 backdrop-blur-xs px-2 py-0.5 rounded-full border border-white/30 shadow-sm text-[10px] sm:text-xs">
+              P1 Store: {board[6]}
             </span>
           </div>
         </div>
       </main>
 
-      {/* Footer Instructions / Extra Turn Notification */}
-      <footer className="pb-safe px-4 py-2 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753]">
+      {/* Footer Instructions (Hidden in landscape to prevent board compression) */}
+      <footer className="pb-safe px-4 py-1.5 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753] landscape:hidden">
         <span>
           {lastExtraTurn ? '⭐ Extra Turn active!' : 'Sow stones counterclockwise'}
         </span>
-        <span className="text-[11px] bg-accent-light px-2.5 py-1 rounded-full border border-[#d8c3a5]/50">
+        <span className="text-[11px] bg-accent-light px-2.5 py-0.5 rounded-full border border-[#d8c3a5]/50">
           Target: Most Captured
         </span>
       </footer>

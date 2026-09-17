@@ -216,7 +216,7 @@ export const MainMenu: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full justify-between">
+    <div className="h-full w-full flex flex-col overflow-hidden bg-primary-bg">
       {/* Top Header Bar */}
       <header
         style={{
@@ -224,7 +224,7 @@ export const MainMenu: React.FC = () => {
           WebkitBackdropFilter: 'none',
           backdropFilter: 'none',
         }}
-        className="relative px-3 sm:px-6 pb-2.5 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 gap-2 shrink-0 select-none"
+        className="flex-shrink-0 relative px-3 sm:px-6 pb-2.5 flex items-center justify-between border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-sm z-50 gap-2 select-none"
       >
         <div className="min-w-0 flex-1">
           <h1 className="text-lg sm:text-xl font-black text-container-dark tracking-tight uppercase flex items-center gap-2 truncate">
@@ -317,8 +317,14 @@ export const MainMenu: React.FC = () => {
       </header>
 
       {/* Main Responsive Game Selection Grid: 2 cols on mobile, 3 on tablet/iPad, 4 on desktop/PC */}
-      <main className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-3 scrollbar-none flex flex-col items-center">
-        <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pb-6">
+      <main
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-y',
+        }}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-6 md:px-8 py-3.5 scrollbar-none flex flex-col items-center pb-safe"
+      >
+        <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pb-8">
           {GAME_CATALOG.map((game) => (
             <div
               key={game.id}
@@ -377,6 +383,20 @@ export const MainMenu: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {/* Footer Info / Pass & Play Guidance at bottom of scrollable catalog */}
+        <footer className="w-full max-w-5xl pb-safe pt-3 border-t border-[#2a2e33]/15 flex items-center justify-between text-[11px] font-medium text-[#7d6753] mt-auto">
+          <div className="flex items-center gap-1.5">
+            <svg className="w-4 h-4 text-container-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+              <line x1="12" y1="18" x2="12.01" y2="18" />
+            </svg>
+            <span>Share 1 Device • Play vs CPU • Online Duel</span>
+          </div>
+          <span className="text-[10px] uppercase font-bold tracking-widest bg-container-dark text-accent-light px-2 py-0.5 rounded-md">
+            v1.8.4
+          </span>
+        </footer>
       </main>
 
       {/* Rules Modal in Main Menu */}
@@ -392,20 +412,6 @@ export const MainMenu: React.FC = () => {
         isOpen={showRemoteModal}
         onClose={() => setShowRemoteModal(false)}
       />
-
-      {/* Footer Info / Pass & Play Guidance */}
-      <footer className="pb-safe px-4 pt-2 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-[11px] font-medium text-[#7d6753]">
-        <div className="flex items-center gap-1.5">
-          <svg className="w-4 h-4 text-container-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-            <line x1="12" y1="18" x2="12.01" y2="18" />
-          </svg>
-          <span>Share 1 Device • Play vs CPU • Online Duel</span>
-        </div>
-        <span className="text-[10px] uppercase font-bold tracking-widest bg-container-dark text-accent-light px-2 py-0.5 rounded-md">
-          v1.8.0
-        </span>
-      </footer>
     </div>
   );
 };

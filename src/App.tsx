@@ -114,10 +114,10 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className={`relative w-full h-full min-h-dvh h-[100dvh] overflow-hidden theme-${theme} flex flex-col justify-between select-none transition-colors duration-300`}>
+    <div className={`relative w-screen h-dvh min-h-dvh overflow-hidden theme-${theme} flex flex-col select-none transition-colors duration-300 bg-primary-bg`}>
       <TouchRippleOverlay />
       {/* Screen slide transition wrapper with dynamic Suspense fallback */}
-      <div key={activeGame || 'menu'} className="w-full h-full animate-fade-in flex flex-col justify-between">
+      <div key={activeGame || 'menu'} className="w-full h-full min-h-0 flex-1 flex flex-col overflow-hidden">
         <Suspense fallback={<GameLoadingFallback />}>
           {renderActiveGame()}
         </Suspense>

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.5] - 2026-09-17 — "Mobile Viewport Scroll Lock Fix, Compact Landscape Header & Dual-Orientation Air Hockey"
+
+### Fixed — Home Screen Scroll Lock (`src/App.tsx`, `src/components/MainMenu.tsx`)
+- **Dynamic Viewport Height (`h-dvh`)**:
+  - Replaced rigid `h-screen overflow-hidden` with `h-dvh min-h-dvh w-screen flex flex-col overflow-hidden bg-primary-bg` on the root container.
+  - Set active game/menu container to `w-full h-full min-h-0 flex-1 flex flex-col overflow-hidden` so flexbox children can size independently without clipping.
+- **Touch Scrollability**:
+  - Configured Main Menu catalog with `flex-1 min-h-0 overflow-y-auto overscroll-contain` alongside `-webkit-overflow-scrolling: touch; touch-action: pan-y;`.
+  - Moved Pass & Play footer inside the bottom of the scrollable container with `pb-safe`, freeing full mobile screen estate for game selection.
+
+### Changed — Compact Landscape Header System (`src/components/GameHeader.tsx`)
+- **Single-Row Landscape Layout ($\le 44\text{px}$ / `h-11`)**:
+  - Implemented responsive orientation detection using `useOrientation()`.
+  - In landscape orientation, header condenses into a single ultra-compact bar:
+    - **Left**: Compact "← Menu" button and game title.
+    - **Center**: Combined turn pill and live scores (`P1 3 : 2 P2` + CPU pulse badge).
+    - **Right**: Compact mode selector (`👥` / `🤖`) and icon-only action buttons for Rules (`?`), Undo (`↶`), and Reset (`↻`).
+  - Completely eliminates multi-row stacking (~150px), re-allocating over 100px of vertical space to game boards.
+
+### Fixed — Board Flex Scaling (`src/games/ConnectFour.tsx`, `src/games/Mancala.tsx`)
+- **Connect Four**:
+  - Wrapped game board in `flex-1 min-h-0 w-full flex flex-col items-center justify-center p-1 sm:p-2 overflow-hidden`.
+  - Scaled grid container with `landscape:w-auto landscape:max-w-none landscape:h-full max-h-[calc(100%-2rem)] aspect-[7/6]`, ensuring all 6 rows are completely visible without vertical clipping.
+- **Mancala**:
+  - Replaced rigid pixel heights on store and pit troughs (`h-48 sm:h-64 md:h-72`) with dynamic flex layouts.
+  - Board container uses `landscape:w-auto landscape:max-w-none landscape:h-full max-h-full aspect-[2.3/1]`.
+  - Home stores dynamically size with `aspect-[1/2.2] h-full max-h-full`, ensuring Player 1's bottom pits and store are 100% visible on any landscape screen.
+
+### Added — Dual-Orientation Air Hockey Rink & Physics (`src/games/AirHockey.tsx`)
+- **Portrait Orientation (Vertical Table)**:
+  - Rink canvas uses `aspect-[1/1.7]` with `h-full max-h-full w-auto max-w-full`, stretching down the length of mobile devices placed flat on a table between two players.
+  - Player 1 guards Bottom goal ($y = \text{height}$), Player 2 guards Top goal ($y = 0$).
+  - Horizontal center dividing line and goal creases rendered for top and bottom.
+- **Landscape Orientation (Horizontal Table)**:
+  - Rink canvas uses `aspect-[1.7/1]` with `h-full max-h-full w-auto max-w-full`.
+  - Player 1 guards Left goal ($x = 0$), Player 2 guards Right goal ($x = \text{width}$).
+  - Vertical center dividing line and goal creases rendered for left and right.
+- **Dynamic ResizeObserver**:
+  - Canvas buffer dynamically scales to parent container dimensions with `devicePixelRatio`, removing default 300x150 aspect distortion.
+
+---
+
 ## [1.8.4] - 2026-09-17 — "Realistic Bowling Physics Overhaul, Universal VS CPU Engine, Standardized Rules Drawer & Hex Ergonomics"
 
 ### Added — Realistic Bowling Strike Difficulty & Pin Physics Overhaul (`src/games/Bowling.tsx`)

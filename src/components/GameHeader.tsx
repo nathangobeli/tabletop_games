@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
+import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber, GameId } from '../types/game';
 import { triggerHaptic, playTapSound } from '../utils/feedback';
 import { GameRulesModal } from './GameRulesModal';
@@ -49,6 +50,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 }) => {
   const [showRules, setShowRules] = useState<boolean>(false);
   const { activeGame, resetToMenu, gameMode: ctxGameMode, setGameMode: setCtxGameMode, isCpuThinking } = useGame();
+  const { isLandscape } = useOrientation();
 
   // Mode resolution
   const effectiveGameMode: GamePlayMode = propGameMode ?? (ctxGameMode === 'pve' ? 'vs-cpu' : 'pass-and-play');
@@ -68,6 +70,178 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   const displaySubtitle = subtitle || subStatusText;
   const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? p1Label : resolvedP2Label;
 
+  // Ultra-compact single row for landscape viewports
+  if (isLandscape) {
+    return (
+      <>
+        <header
+          style={{
+            paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+            paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)',
+            WebkitBackdropFilter: 'none',
+            backdropFilter: 'none',
+          }}
+          className="relative px-3 py-1 flex items-center justify-between gap-1.5 border-b border-[#2a2e33]/15 bg-[#f3e9dc] shadow-xs z-50 shrink-0 select-none h-11 max-h-11 overflow-hidden"
+        >
+          {/* Left: Menu button & Compact Title */}
+          <div className="flex items-center gap-1.5 shrink-0 min-w-0">
+            <button
+              onClick={() => {
+                triggerHaptic('light');
+                playTapSound();
+                resetToMenu();
+              }}
+              type="button"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-container-dark hover:bg-[#393e44] active:scale-95 text-accent-light font-bold text-xs shadow-xs transition-all shrink-0"
+              aria-label="Back to Main Menu"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              <span className="text-[11px]">Menu</span>
+            </button>
+
+            <h1 className="text-xs font-black text-container-dark tracking-tight uppercase truncate max-w-[100px] sm:max-w-[150px]">
+              {displayTitle}
+            </h1>
+          </div>
+
+          {/* Center: Combined Turn Pill & Live Score */}
+          <div className="flex items-center gap-2 bg-container-dark/10 px-2.5 py-0.5 rounded-full border border-stone-300/40 text-xs shadow-inner shrink-0">
+            {/* Player 1 Card / Pill */}
+            <div className={`flex items-center gap-1 font-bold ${turn === 1 ? 'text-player-1 font-black' : 'text-stone-600'}`}>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${turn === 1 ? 'bg-player-1 ring-2 ring-player-1/40 animate-pulse' : 'bg-player-1/50'}`} />
+              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{p1Label}</span>
+              {scoreP1 !== undefined && (
+                <span className="tabular-nums bg-white/80 px-1 py-0.2 rounded text-[10px] font-black text-stone-900 border border-black/5">
+                  {scoreP1}
+                </span>
+              )}
+            </div>
+
+            <span className="text-stone-400 font-bold text-[10px]">:</span>
+
+            {/* Player 2 Card / Pill */}
+            <div className={`flex items-center gap-1 font-bold ${turn === 2 ? 'text-player-2 font-black' : 'text-stone-600'}`}>
+              {scoreP2 !== undefined && (
+                <span className="tabular-nums bg-white/80 px-1 py-0.2 rounded text-[10px] font-black text-stone-900 border border-black/5">
+                  {scoreP2}
+                </span>
+              )}
+              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{resolvedP2Label}</span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${turn === 2 ? 'bg-player-2 ring-2 ring-player-2/40 animate-pulse' : 'bg-player-2/50'}`} />
+            </div>
+
+            {/* CPU Thinking Badge */}
+            {isCpuThinking && (
+              <span className="ml-0.5 text-[9px] font-black bg-amber-400 text-stone-950 px-1.5 py-0.2 rounded-full animate-pulse uppercase">
+                CPU...
+              </span>
+            )}
+          </div>
+
+          {/* Right: Mode Selector Pill & Compact Action Icons */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {supportedModes && supportedModes.length > 1 && (
+              <div className="flex items-center gap-0.5 bg-container-dark/10 p-0.5 rounded-lg border border-stone-300/40">
+                {supportedModes.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      triggerHaptic('light');
+                      playTapSound();
+                      handleModeToggle(m);
+                      if (m === 'remote' && onOpenRemoteModal) {
+                        onOpenRemoteModal();
+                      }
+                    }}
+                    type="button"
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase transition-all ${
+                      effectiveGameMode === m
+                        ? 'bg-amber-500 text-stone-900 shadow-xs scale-102'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                    title={m === 'pass-and-play' ? '2P Pass & Play' : m === 'vs-cpu' ? 'Vs CPU' : 'Remote Duel'}
+                  >
+                    {m === 'pass-and-play' ? '👥' : m === 'vs-cpu' ? '🤖' : '🌐'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Rules Button Icon */}
+            {targetGameId && (
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  playTapSound();
+                  setShowRules(true);
+                }}
+                type="button"
+                className="w-7 h-7 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-900 font-black text-xs flex items-center justify-center border border-amber-500/40 shadow-xs transition-all"
+                title="How to Play / Rules"
+                aria-label="How to Play"
+              >
+                ?
+              </button>
+            )}
+
+            {/* Undo Button Icon */}
+            {onUndo && (
+              <button
+                onClick={() => {
+                  triggerHaptic('light');
+                  playTapSound();
+                  onUndo();
+                }}
+                disabled={!canUndo}
+                type="button"
+                className={`w-7 h-7 rounded-lg font-bold text-xs flex items-center justify-center border transition-all ${
+                  canUndo
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-900 border-amber-500/40'
+                    : 'bg-stone-300/30 text-stone-400 border-transparent cursor-not-allowed opacity-40'
+                }`}
+                title="Undo Last Move"
+                aria-label="Undo Move"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7v6h6" />
+                  <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                </svg>
+              </button>
+            )}
+
+            {/* Reset Button Icon */}
+            <button
+              onClick={() => {
+                triggerHaptic('medium');
+                playTapSound();
+                onRestart();
+              }}
+              type="button"
+              className="w-7 h-7 rounded-lg bg-accent-light hover:bg-white active:scale-95 text-container-dark font-bold text-xs flex items-center justify-center border border-[#d8c3a5]/60 shadow-xs transition-all"
+              title="Restart Game"
+              aria-label="Reset Game"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        {/* Rules & Instructions Modal */}
+        {showRules && targetGameId && (
+          <GameRulesModal
+            gameId={targetGameId}
+            onClose={() => setShowRules(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  // Standard Multi-Row Portrait Header
   return (
     <>
       <header
@@ -218,110 +392,110 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
           </div>
         )}
 
-      {/* Players status & score bar with Persistent Active Turn Pill */}
-      <div className="flex items-center justify-between gap-1 sm:gap-1.5 px-0.5 min-w-0">
-        {/* Player 1 Card */}
-        <div
-          className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
-            turn === 1 || turn === 0
-              ? 'bg-player-1/15 border-player-1 shadow-sm ring-1 ring-player-1/40 scale-[1.01]'
-              : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
-          }`}
-        >
-          <div className="flex items-center gap-1.5 min-w-0 truncate">
-            <span
-              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                turn === 1 ? 'bg-player-1 ring-2 ring-player-1/40 animate-pulse' : 'bg-player-1/60'
-              }`}
-            />
-            <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 1 || turn === 0 ? 'text-player-1' : 'text-container-dark/80'}`}>
-              {p1Label}
-            </span>
+        {/* Players status & score bar with Persistent Active Turn Pill */}
+        <div className="flex items-center justify-between gap-1 sm:gap-1.5 px-0.5 min-w-0">
+          {/* Player 1 Card */}
+          <div
+            className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
+              turn === 1 || turn === 0
+                ? 'bg-player-1/15 border-player-1 shadow-sm ring-1 ring-player-1/40 scale-[1.01]'
+                : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0 truncate">
+              <span
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                  turn === 1 ? 'bg-player-1 ring-2 ring-player-1/40 animate-pulse' : 'bg-player-1/60'
+                }`}
+              />
+              <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 1 || turn === 0 ? 'text-player-1' : 'text-container-dark/80'}`}>
+                {p1Label}
+              </span>
+            </div>
+            {scoreP1 !== undefined && (
+              <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
+                {scoreP1}
+              </span>
+            )}
           </div>
-          {scoreP1 !== undefined && (
-            <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
-              {scoreP1}
-            </span>
-          )}
-        </div>
 
-        {/* Lightweight Persistent Turn Pill / Badge */}
-        <div
-          key={`${turn}-${isCpuThinking}`}
-          className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-center transition-all duration-200 shadow-sm flex items-center gap-1 shrink-0 ${
-            turn === 0
-              ? 'border-amber-500/50 bg-amber-500/15 text-amber-900 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/40'
-              : turn === 1
-              ? 'border-player-1/60 bg-blue-500/15 text-blue-800 shadow-[0_0_10px_rgba(59,130,246,0.25)] ring-1 ring-player-1/50 animate-turn-pulse'
-              : isCpuThinking || effectiveGameMode === 'vs-cpu'
-              ? 'border-amber-500/70 bg-amber-500/20 text-amber-900 shadow-[0_0_12px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/60 animate-pulse'
-              : 'border-player-2/60 bg-red-500/15 text-red-800 shadow-[0_0_10px_rgba(239,68,68,0.25)] ring-1 ring-player-2/50 animate-turn-pulse'
-          }`}
-          title={turn === 0 ? 'Simultaneous Real-Time Race' : `${activeLabel}'s Turn`}
-        >
-          <span
-            className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${
+          {/* Lightweight Persistent Turn Pill / Badge */}
+          <div
+            key={`${turn}-${isCpuThinking}`}
+            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-center transition-all duration-200 shadow-sm flex items-center gap-1 shrink-0 ${
               turn === 0
-                ? 'bg-amber-500 ring-2 ring-amber-500/40'
+                ? 'border-amber-500/50 bg-amber-500/15 text-amber-900 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/40'
                 : turn === 1
-                ? 'bg-player-1'
+                ? 'border-player-1/60 bg-blue-500/15 text-blue-800 shadow-[0_0_10px_rgba(59,130,246,0.25)] ring-1 ring-player-1/50 animate-turn-pulse'
                 : isCpuThinking || effectiveGameMode === 'vs-cpu'
-                ? 'bg-amber-400'
-                : 'bg-player-2'
-            } ring-2 ${turn === 1 ? 'ring-player-1/40' : turn === 2 ? 'ring-player-2/40' : 'ring-amber-500/40'} ${turn === 0 ? '' : 'animate-ping'}`}
-          />
-          <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wide whitespace-nowrap">
-            {turn === 0
-              ? 'Simultaneous'
-              : turn === 1
-              ? "P1's Turn"
-              : isCpuThinking || effectiveGameMode === 'vs-cpu'
-              ? '🤖 CPU Thinking...'
-              : "P2's Turn"}
-          </span>
-        </div>
-
-        {/* Player 2 Card */}
-        <div
-          className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
-            turn === 2 || turn === 0
-              ? 'bg-player-2/15 border-player-2 shadow-sm ring-1 ring-player-2/40 scale-[1.01]'
-              : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
-          }`}
-        >
-          <div className="flex items-center gap-1.5 min-w-0 truncate">
+                ? 'border-amber-500/70 bg-amber-500/20 text-amber-900 shadow-[0_0_12px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/60 animate-pulse'
+                : 'border-player-2/60 bg-red-500/15 text-red-800 shadow-[0_0_10px_rgba(239,68,68,0.25)] ring-1 ring-player-2/50 animate-turn-pulse'
+            }`}
+            title={turn === 0 ? 'Simultaneous Real-Time Race' : `${activeLabel}'s Turn`}
+          >
             <span
-              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                turn === 2 ? 'bg-player-2 ring-2 ring-player-2/40 animate-pulse' : 'bg-player-2/60'
-              }`}
+              className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${
+                turn === 0
+                  ? 'bg-amber-500 ring-2 ring-amber-500/40'
+                  : turn === 1
+                  ? 'bg-player-1'
+                  : isCpuThinking || effectiveGameMode === 'vs-cpu'
+                  ? 'bg-amber-400'
+                  : 'bg-player-2'
+              } ring-2 ${turn === 1 ? 'ring-player-1/40' : turn === 2 ? 'ring-player-2/40' : 'ring-amber-500/40'} ${turn === 0 ? '' : 'animate-ping'}`}
             />
-            <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 2 || turn === 0 ? 'text-player-2' : 'text-container-dark/80'}`}>
-              {resolvedP2Label}
+            <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wide whitespace-nowrap">
+              {turn === 0
+                ? 'Simultaneous'
+                : turn === 1
+                ? "P1's Turn"
+                : isCpuThinking || effectiveGameMode === 'vs-cpu'
+                ? '🤖 CPU Thinking...'
+                : "P2's Turn"}
             </span>
           </div>
-          {scoreP2 !== undefined && (
-            <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
-              {scoreP2}
-            </span>
-          )}
-        </div>
-      </div>
 
-      {/* Dynamic Status / Banner Message */}
-      {statusMessage && (
-        <div className="bg-container-dark text-accent-light text-center py-1 px-3 rounded-lg text-[11px] font-bold tracking-wide shadow-inner animate-fade-in flex items-center justify-center gap-1.5">
-          <span>{statusMessage}</span>
+          {/* Player 2 Card */}
+          <div
+            className={`flex-1 min-w-0 flex items-center justify-between px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 border ${
+              turn === 2 || turn === 0
+                ? 'bg-player-2/15 border-player-2 shadow-sm ring-1 ring-player-2/40 scale-[1.01]'
+                : 'bg-white/40 border-transparent opacity-65 scale-[0.99]'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0 truncate">
+              <span
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                  turn === 2 ? 'bg-player-2 ring-2 ring-player-2/40 animate-pulse' : 'bg-player-2/60'
+                }`}
+              />
+              <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 2 || turn === 0 ? 'text-player-2' : 'text-container-dark/80'}`}>
+                {resolvedP2Label}
+              </span>
+            </div>
+            {scoreP2 !== undefined && (
+              <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
+                {scoreP2}
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Dynamic Status / Banner Message */}
+        {statusMessage && (
+          <div className="bg-container-dark text-accent-light text-center py-1 px-3 rounded-lg text-[11px] font-bold tracking-wide shadow-inner animate-fade-in flex items-center justify-center gap-1.5">
+            <span>{statusMessage}</span>
+          </div>
+        )}
+      </header>
+
+      {/* Rules & Instructions Modal */}
+      {showRules && targetGameId && (
+        <GameRulesModal
+          gameId={targetGameId}
+          onClose={() => setShowRules(false)}
+        />
       )}
-    </header>
-
-    {/* Rules & Instructions Modal */}
-    {showRules && targetGameId && (
-      <GameRulesModal
-        gameId={targetGameId}
-        onClose={() => setShowRules(false)}
-      />
-    )}
-  </>
-);
+    </>
+  );
 };

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
 
@@ -31,7 +32,9 @@ const MAX_PUCK_SPEED = 24;
 
 export const AirHockey: React.FC = () => {
   const { setGameStatus, resetToMenu } = useGame();
+  const { isLandscape } = useOrientation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
 
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
@@ -44,6 +47,7 @@ export const AirHockey: React.FC = () => {
   const stateRef = useRef<{
     width: number;
     height: number;
+    isLandscape: boolean;
     p1Score: number;
     p2Score: number;
     p1Mallet: Mallet;
@@ -57,6 +61,7 @@ export const AirHockey: React.FC = () => {
   }>({
     width: 360,
     height: 640,
+    isLandscape: false,
     p1Score: 0,
     p2Score: 0,
     p1Mallet: { x: 180, y: 520, vx: 0, vy: 0, radius: MALLET_RADIUS, touchId: null },
@@ -68,6 +73,28 @@ export const AirHockey: React.FC = () => {
     stagnantTimer: 0,
     keys: {},
   });
+
+  const repositionEntities = useCallback((s: typeof stateRef.current) => {
+    if (s.isLandscape) {
+      s.p1Mallet.x = s.width * 0.2;
+      s.p1Mallet.y = s.height / 2;
+      s.p2Mallet.x = s.width * 0.8;
+      s.p2Mallet.y = s.height / 2;
+    } else {
+      s.p1Mallet.x = s.width / 2;
+      s.p1Mallet.y = s.height * 0.8;
+      s.p2Mallet.x = s.width / 2;
+      s.p2Mallet.y = s.height * 0.2;
+    }
+    s.p1Mallet.vx = 0;
+    s.p1Mallet.vy = 0;
+    s.p2Mallet.vx = 0;
+    s.p2Mallet.vy = 0;
+    s.puck.x = s.width / 2;
+    s.puck.y = s.height / 2;
+    s.puck.vx = 0;
+    s.puck.vy = 0;
+  }, []);
 
   // Launch / Serve puck with an impulse toward one player
   const servePuck = useCallback((towardPlayer: PlayerNumber = 1) => {
@@ -81,10 +108,19 @@ export const AirHockey: React.FC = () => {
     s.puck.y = s.height / 2;
     const speed = 7.5;
     const angleOffset = (Math.random() - 0.5) * 0.85;
-    const dirY = towardPlayer === 1 ? 1 : -1;
 
-    s.puck.vx = Math.sin(angleOffset) * speed;
-    s.puck.vy = Math.cos(angleOffset) * speed * dirY;
+    if (s.isLandscape) {
+      // In landscape, P1 is Left (x=0), P2 is Right (x=width)
+      const dirX = towardPlayer === 1 ? -1 : 1;
+      s.puck.vx = Math.cos(angleOffset) * speed * dirX;
+      s.puck.vy = Math.sin(angleOffset) * speed;
+    } else {
+      // In portrait, P1 is Bottom (y=height), P2 is Top (y=0)
+      const dirY = towardPlayer === 1 ? 1 : -1;
+      s.puck.vx = Math.sin(angleOffset) * speed;
+      s.puck.vy = Math.cos(angleOffset) * speed * dirY;
+    }
+
     s.inPlay = true;
     s.stagnantTimer = 0;
     setInPlay(true);
@@ -99,9 +135,7 @@ export const AirHockey: React.FC = () => {
     s.inPlay = false;
     s.goalScoredTimer = 0;
     s.stagnantTimer = 0;
-    s.p1Mallet = { x: s.width / 2, y: s.height * 0.8, vx: 0, vy: 0, radius: MALLET_RADIUS, touchId: null };
-    s.p2Mallet = { x: s.width / 2, y: s.height * 0.2, vx: 0, vy: 0, radius: MALLET_RADIUS, touchId: null };
-    s.puck = { x: s.width / 2, y: s.height / 2, vx: 0, vy: 0, radius: PUCK_RADIUS };
+    repositionEntities(s);
     setScoreP1(0);
     setScoreP2(0);
     setWinner(null);
@@ -109,7 +143,7 @@ export const AirHockey: React.FC = () => {
     setInPlay(false);
     setStatusMessage('Tap to serve! First to 7 goals wins.');
     setGameStatus('active');
-  }, [setGameStatus]);
+  }, [setGameStatus, repositionEntities]);
 
   // Keyboard navigation for desktop testing (WASD for Player 2, Arrow keys for Player 1)
   useEffect(() => {
@@ -134,18 +168,21 @@ export const AirHockey: React.FC = () => {
     };
   }, [servePuck]);
 
-  // Main canvas animation and physics loop
+  // Main canvas animation, resize observer, and physics loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     let animId: number;
 
-    const handleResize = () => {
+    const handleCanvasResize = () => {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
@@ -155,22 +192,27 @@ export const AirHockey: React.FC = () => {
       const s = stateRef.current;
       const prevW = s.width;
       const prevH = s.height;
+      const newLandscape = rect.width > rect.height;
+      const orientationChanged = s.isLandscape !== newLandscape;
+
       s.width = rect.width;
       s.height = rect.height;
+      s.isLandscape = newLandscape;
 
-      // Position mallets if initial or resize
-      if (prevW === 360 && prevH === 640) {
-        s.p1Mallet.x = s.width / 2;
-        s.p1Mallet.y = s.height * 0.8;
-        s.p2Mallet.x = s.width / 2;
-        s.p2Mallet.y = s.height * 0.2;
-        s.puck.x = s.width / 2;
-        s.puck.y = s.height / 2;
+      // Position mallets if initial or orientation changed
+      if ((prevW === 360 && prevH === 640) || orientationChanged) {
+        repositionEntities(s);
       }
     };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
+    // Immediate measure
+    handleCanvasResize();
+
+    const resizeObserver = new ResizeObserver(() => {
+      handleCanvasResize();
+    });
+    resizeObserver.observe(container);
+    window.addEventListener('resize', handleCanvasResize);
 
     const checkMalletPuckCollision = (mallet: Mallet, puck: Puck) => {
       const dx = puck.x - mallet.x;
@@ -179,7 +221,6 @@ export const AirHockey: React.FC = () => {
       const minDist = mallet.radius + puck.radius;
 
       if (dist < minDist && dist > 0.001) {
-        // Normal vector
         const nx = dx / dist;
         const ny = dy / dist;
 
@@ -194,7 +235,6 @@ export const AirHockey: React.FC = () => {
         const velAlongNormal = rvx * nx + rvy * ny;
 
         if (velAlongNormal < 0) {
-          // Impulse with mallet push force
           const impulse = -(1 + RESTITUTION) * velAlongNormal;
           puck.vx += (nx * impulse) + mallet.vx * 0.75;
           puck.vy += (ny * impulse) + mallet.vy * 0.75;
@@ -216,6 +256,8 @@ export const AirHockey: React.FC = () => {
       const s = stateRef.current;
       if (s.isOver) return;
 
+      const isLandscapeMode = s.isLandscape;
+
       // Keyboard controls update for desktop (P2 WASD, P1 Arrow Keys)
       const k = s.keys;
       const keySpeed = 8.5;
@@ -228,19 +270,38 @@ export const AirHockey: React.FC = () => {
         if (k['s']) vy += keySpeed;
         s.p2Mallet.vx = vx;
         s.p2Mallet.vy = vy;
-        s.p2Mallet.x = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, s.p2Mallet.x + vx));
-        s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, s.p2Mallet.y + vy));
+
+        if (isLandscapeMode) {
+          // P2 guards Right half
+          s.p2Mallet.x = Math.max(s.width / 2 + s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, s.p2Mallet.x + vx));
+          s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height - s.p2Mallet.radius, s.p2Mallet.y + vy));
+        } else {
+          // P2 guards Top half
+          s.p2Mallet.x = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, s.p2Mallet.x + vx));
+          s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, s.p2Mallet.y + vy));
+        }
       } else if (s.p2Mallet.touchId === null && s.inPlay) {
-        // Simple AI for Player 2 on desktop when no touch/keys are active
-        const targetX = s.puck.x;
-        const targetY = Math.min(s.height * 0.28, Math.max(s.p2Mallet.radius * 1.5, s.puck.y - 40));
-        const diffX = targetX - s.p2Mallet.x;
-        const diffY = targetY - s.p2Mallet.y;
+        // Simple AI for Player 2 when no touch/keys are active
         const aiSpeed = 4.2;
-        s.p2Mallet.vx = Math.sign(diffX) * Math.min(Math.abs(diffX), aiSpeed);
-        s.p2Mallet.vy = Math.sign(diffY) * Math.min(Math.abs(diffY), aiSpeed);
-        s.p2Mallet.x += s.p2Mallet.vx;
-        s.p2Mallet.y += s.p2Mallet.vy;
+        if (isLandscapeMode) {
+          const targetY = s.puck.y;
+          const targetX = Math.max(s.width * 0.72, Math.min(s.width - s.p2Mallet.radius * 1.5, s.puck.x + 40));
+          const diffX = targetX - s.p2Mallet.x;
+          const diffY = targetY - s.p2Mallet.y;
+          s.p2Mallet.vx = Math.sign(diffX) * Math.min(Math.abs(diffX), aiSpeed);
+          s.p2Mallet.vy = Math.sign(diffY) * Math.min(Math.abs(diffY), aiSpeed);
+          s.p2Mallet.x = Math.max(s.width / 2 + s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, s.p2Mallet.x + s.p2Mallet.vx));
+          s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height - s.p2Mallet.radius, s.p2Mallet.y + s.p2Mallet.vy));
+        } else {
+          const targetX = s.puck.x;
+          const targetY = Math.min(s.height * 0.28, Math.max(s.p2Mallet.radius * 1.5, s.puck.y - 40));
+          const diffX = targetX - s.p2Mallet.x;
+          const diffY = targetY - s.p2Mallet.y;
+          s.p2Mallet.vx = Math.sign(diffX) * Math.min(Math.abs(diffX), aiSpeed);
+          s.p2Mallet.vy = Math.sign(diffY) * Math.min(Math.abs(diffY), aiSpeed);
+          s.p2Mallet.x = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, s.p2Mallet.x + s.p2Mallet.vx));
+          s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, s.p2Mallet.y + s.p2Mallet.vy));
+        }
       }
 
       if (k['arrowleft'] || k['arrowright'] || k['arrowup'] || k['arrowdown']) {
@@ -252,8 +313,16 @@ export const AirHockey: React.FC = () => {
         if (k['arrowdown']) vy += keySpeed;
         s.p1Mallet.vx = vx;
         s.p1Mallet.vy = vy;
-        s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, s.p1Mallet.x + vx));
-        s.p1Mallet.y = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, s.p1Mallet.y + vy));
+
+        if (isLandscapeMode) {
+          // P1 guards Left half
+          s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width / 2 - s.p1Mallet.radius, s.p1Mallet.x + vx));
+          s.p1Mallet.y = Math.max(s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, s.p1Mallet.y + vy));
+        } else {
+          // P1 guards Bottom half
+          s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, s.p1Mallet.x + vx));
+          s.p1Mallet.y = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, s.p1Mallet.y + vy));
+        }
       }
 
       // If pausing right after goal or waiting for serve
@@ -270,107 +339,190 @@ export const AirHockey: React.FC = () => {
       p.vx *= FRICTION;
       p.vy *= FRICTION;
 
-      // Anti-stagnation drift if puck stops moving (< 0.2 speed for > 2 seconds)
+      // Anti-stagnation drift if puck stops moving (< 0.25 speed for > 2 seconds)
       const currentPuckSpeed = Math.hypot(p.vx, p.vy);
       if (currentPuckSpeed < 0.25) {
         s.stagnantTimer++;
         if (s.stagnantTimer > 120) {
-          // Push puck toward nearest player
-          const driftY = p.y < s.height / 2 ? 2.5 : -2.5;
-          p.vy = driftY;
-          p.vx = (Math.random() - 0.5) * 2;
+          if (isLandscapeMode) {
+            const driftX = p.x < s.width / 2 ? 2.5 : -2.5;
+            p.vx = driftX;
+            p.vy = (Math.random() - 0.5) * 2;
+          } else {
+            const driftY = p.y < s.height / 2 ? 2.5 : -2.5;
+            p.vy = driftY;
+            p.vx = (Math.random() - 0.5) * 2;
+          }
           s.stagnantTimer = 0;
         }
       } else {
         s.stagnantTimer = 0;
       }
 
-      // Goal slot width (38% of rink width)
-      const goalWidth = s.width * 0.38;
-      const goalLeft = (s.width - goalWidth) / 2;
-      const goalRight = goalLeft + goalWidth;
+      // Orientation-specific goal boundaries & wall bounces
+      if (isLandscapeMode) {
+        const goalHeight = s.height * 0.38;
+        const goalTop = (s.height - goalHeight) / 2;
+        const goalBottom = goalTop + goalHeight;
 
-      // Check Top Goal (Player 1 scores on Player 2)
-      if (p.y - p.radius <= 0) {
-        if (p.x >= goalLeft && p.x <= goalRight) {
-          // GOAL for P1!
-          s.p1Score += 1;
-          setScoreP1(s.p1Score);
-          triggerHaptic('success');
-          playCaptureSound();
-          setGoalFlash(1);
-          setTimeout(() => setGoalFlash(null), 800);
+        // Check Left Goal (Player 2 scores on Player 1)
+        if (p.x - p.radius <= 0) {
+          if (p.y >= goalTop && p.y <= goalBottom) {
+            s.p2Score += 1;
+            setScoreP2(s.p2Score);
+            triggerHaptic('success');
+            playCaptureSound();
+            setGoalFlash(2);
+            setTimeout(() => setGoalFlash(null), 800);
 
-          if (s.p1Score >= TARGET_SCORE) {
-            s.isOver = true;
-            setWinner(1);
-            setGameStatus('finished');
+            if (s.p2Score >= TARGET_SCORE) {
+              s.isOver = true;
+              setWinner(2);
+              setGameStatus('finished');
+              return;
+            }
+
+            p.x = s.width * 0.35;
+            p.y = s.height / 2;
+            p.vx = 0;
+            p.vy = 0;
+            s.inPlay = false;
+            s.goalScoredTimer = 45;
+            setInPlay(false);
+            setStatusMessage('Player 2 Scores! Tap to serve next round.');
             return;
+          } else {
+            p.x = p.radius;
+            p.vx = -p.vx * RESTITUTION;
+            triggerHaptic('light');
           }
+        }
 
-          // Reset puck facing conceding player (P2 top)
-          p.x = s.width / 2;
-          p.y = s.height * 0.35;
-          p.vx = 0;
-          p.vy = 0;
-          s.inPlay = false;
-          s.goalScoredTimer = 45;
-          setInPlay(false);
-          setStatusMessage('Player 1 Scores! Tap to serve next round.');
-          return;
-        } else {
-          // Top wall bounce
+        // Check Right Goal (Player 1 scores on Player 2)
+        if (p.x + p.radius >= s.width) {
+          if (p.y >= goalTop && p.y <= goalBottom) {
+            s.p1Score += 1;
+            setScoreP1(s.p1Score);
+            triggerHaptic('success');
+            playCaptureSound();
+            setGoalFlash(1);
+            setTimeout(() => setGoalFlash(null), 800);
+
+            if (s.p1Score >= TARGET_SCORE) {
+              s.isOver = true;
+              setWinner(1);
+              setGameStatus('finished');
+              return;
+            }
+
+            p.x = s.width * 0.65;
+            p.y = s.height / 2;
+            p.vx = 0;
+            p.vy = 0;
+            s.inPlay = false;
+            s.goalScoredTimer = 45;
+            setInPlay(false);
+            setStatusMessage('Player 1 Scores! Tap to serve next round.');
+            return;
+          } else {
+            p.x = s.width - p.radius;
+            p.vx = -p.vx * RESTITUTION;
+            triggerHaptic('light');
+          }
+        }
+
+        // Top & Bottom walls bounce
+        if (p.y - p.radius <= 0) {
           p.y = p.radius;
           p.vy = -p.vy * RESTITUTION;
           triggerHaptic('light');
-        }
-      }
-
-      // Check Bottom Goal (Player 2 scores on Player 1)
-      if (p.y + p.radius >= s.height) {
-        if (p.x >= goalLeft && p.x <= goalRight) {
-          // GOAL for P2!
-          s.p2Score += 1;
-          setScoreP2(s.p2Score);
-          triggerHaptic('success');
-          playCaptureSound();
-          setGoalFlash(2);
-          setTimeout(() => setGoalFlash(null), 800);
-
-          if (s.p2Score >= TARGET_SCORE) {
-            s.isOver = true;
-            setWinner(2);
-            setGameStatus('finished');
-            return;
-          }
-
-          // Reset puck facing conceding player (P1 bottom)
-          p.x = s.width / 2;
-          p.y = s.height * 0.65;
-          p.vx = 0;
-          p.vy = 0;
-          s.inPlay = false;
-          s.goalScoredTimer = 45;
-          setInPlay(false);
-          setStatusMessage('Player 2 Scores! Tap to serve next round.');
-          return;
-        } else {
-          // Bottom wall bounce
+        } else if (p.y + p.radius >= s.height) {
           p.y = s.height - p.radius;
           p.vy = -p.vy * RESTITUTION;
           triggerHaptic('light');
         }
-      }
+      } else {
+        // PORTRAIT MODE (Top = P2, Bottom = P1)
+        const goalWidth = s.width * 0.38;
+        const goalLeft = (s.width - goalWidth) / 2;
+        const goalRight = goalLeft + goalWidth;
 
-      // Left & Right walls bounce
-      if (p.x - p.radius <= 0) {
-        p.x = p.radius;
-        p.vx = -p.vx * RESTITUTION;
-        triggerHaptic('light');
-      } else if (p.x + p.radius >= s.width) {
-        p.x = s.width - p.radius;
-        p.vx = -p.vx * RESTITUTION;
-        triggerHaptic('light');
+        // Check Top Goal (Player 1 scores on Player 2)
+        if (p.y - p.radius <= 0) {
+          if (p.x >= goalLeft && p.x <= goalRight) {
+            s.p1Score += 1;
+            setScoreP1(s.p1Score);
+            triggerHaptic('success');
+            playCaptureSound();
+            setGoalFlash(1);
+            setTimeout(() => setGoalFlash(null), 800);
+
+            if (s.p1Score >= TARGET_SCORE) {
+              s.isOver = true;
+              setWinner(1);
+              setGameStatus('finished');
+              return;
+            }
+
+            p.x = s.width / 2;
+            p.y = s.height * 0.35;
+            p.vx = 0;
+            p.vy = 0;
+            s.inPlay = false;
+            s.goalScoredTimer = 45;
+            setInPlay(false);
+            setStatusMessage('Player 1 Scores! Tap to serve next round.');
+            return;
+          } else {
+            p.y = p.radius;
+            p.vy = -p.vy * RESTITUTION;
+            triggerHaptic('light');
+          }
+        }
+
+        // Check Bottom Goal (Player 2 scores on Player 1)
+        if (p.y + p.radius >= s.height) {
+          if (p.x >= goalLeft && p.x <= goalRight) {
+            s.p2Score += 1;
+            setScoreP2(s.p2Score);
+            triggerHaptic('success');
+            playCaptureSound();
+            setGoalFlash(2);
+            setTimeout(() => setGoalFlash(null), 800);
+
+            if (s.p2Score >= TARGET_SCORE) {
+              s.isOver = true;
+              setWinner(2);
+              setGameStatus('finished');
+              return;
+            }
+
+            p.x = s.width / 2;
+            p.y = s.height * 0.65;
+            p.vx = 0;
+            p.vy = 0;
+            s.inPlay = false;
+            s.goalScoredTimer = 45;
+            setInPlay(false);
+            setStatusMessage('Player 2 Scores! Tap to serve next round.');
+            return;
+          } else {
+            p.y = s.height - p.radius;
+            p.vy = -p.vy * RESTITUTION;
+            triggerHaptic('light');
+          }
+        }
+
+        // Left & Right walls bounce
+        if (p.x - p.radius <= 0) {
+          p.x = p.radius;
+          p.vx = -p.vx * RESTITUTION;
+          triggerHaptic('light');
+        } else if (p.x + p.radius >= s.width) {
+          p.x = s.width - p.radius;
+          p.vx = -p.vx * RESTITUTION;
+          triggerHaptic('light');
+        }
       }
 
       // Mallet vs Puck Collisions
@@ -382,6 +534,7 @@ export const AirHockey: React.FC = () => {
       const s = stateRef.current;
       const w = s.width;
       const h = s.height;
+      const isLandscapeMode = s.isLandscape;
 
       // 1. Rink Surface & Ice Sheen
       const iceGrad = ctx.createLinearGradient(0, 0, w, h);
@@ -400,63 +553,115 @@ export const AirHockey: React.FC = () => {
         }
       }
 
-      // 2. Goal Slots (Top & Bottom)
-      const goalWidth = w * 0.38;
-      const goalLeft = (w - goalWidth) / 2;
+      // 2. Goal Slots & Creases
+      if (isLandscapeMode) {
+        const goalHeight = h * 0.38;
+        const goalTop = (h - goalHeight) / 2;
 
-      // Top Goal Crease (P2 Red)
-      ctx.fillStyle = '#fee2e2';
-      ctx.beginPath();
-      ctx.arc(w / 2, 0, goalWidth * 0.6, 0, Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+        // Left Goal Crease (P1 Blue)
+        ctx.fillStyle = '#dbeafe';
+        ctx.beginPath();
+        ctx.arc(0, h / 2, goalHeight * 0.6, -Math.PI / 2, Math.PI / 2);
+        ctx.fill();
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 3;
+        ctx.stroke();
 
-      // Top Goal mouth slot
-      ctx.fillStyle = '#b91c1c';
-      ctx.fillRect(goalLeft, 0, goalWidth, 8);
+        // Left Goal mouth slot
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillRect(0, goalTop, 8, goalHeight);
 
-      // Bottom Goal Crease (P1 Blue)
-      ctx.fillStyle = '#dbeafe';
-      ctx.beginPath();
-      ctx.arc(w / 2, h, goalWidth * 0.6, Math.PI, 0);
-      ctx.fill();
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+        // Right Goal Crease (P2 Red)
+        ctx.fillStyle = '#fee2e2';
+        ctx.beginPath();
+        ctx.arc(w, h / 2, goalHeight * 0.6, Math.PI / 2, (3 * Math.PI) / 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.stroke();
 
-      // Bottom Goal mouth slot
-      ctx.fillStyle = '#1d4ed8';
-      ctx.fillRect(goalLeft, h - 8, goalWidth, 8);
+        // Right Goal mouth slot
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillRect(w - 8, goalTop, 8, goalHeight);
 
-      // 3. Center Red Line & Faceoff Circle
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(0, h / 2);
-      ctx.lineTo(w, h / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
+        // Center Red Line & Faceoff Circle (Vertical in landscape)
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0);
+        ctx.lineTo(w / 2, h);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, w * 0.22, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, h * 0.22, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
 
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#ef4444';
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+      } else {
+        const goalWidth = w * 0.38;
+        const goalLeft = (w - goalWidth) / 2;
 
-      // 4. Rink Outer Border Rim
+        // Top Goal Crease (P2 Red)
+        ctx.fillStyle = '#fee2e2';
+        ctx.beginPath();
+        ctx.arc(w / 2, 0, goalWidth * 0.6, 0, Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Top Goal mouth slot
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillRect(goalLeft, 0, goalWidth, 8);
+
+        // Bottom Goal Crease (P1 Blue)
+        ctx.fillStyle = '#dbeafe';
+        ctx.beginPath();
+        ctx.arc(w / 2, h, goalWidth * 0.6, Math.PI, 0);
+        ctx.fill();
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Bottom Goal mouth slot
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillRect(goalLeft, h - 8, goalWidth, 8);
+
+        // Center Red Line & Faceoff Circle (Horizontal in portrait)
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, h / 2);
+        ctx.lineTo(w, h / 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, w * 0.22, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+      }
+
+      // 3. Rink Outer Border Rim
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 6;
       ctx.strokeRect(0, 0, w, h);
 
-      // 5. Draw Puck (with drop shadow)
+      // 4. Draw Puck (with drop shadow)
       const p = s.puck;
       ctx.beginPath();
       ctx.arc(p.x + 2, p.y + 3, p.radius, 0, Math.PI * 2);
@@ -475,7 +680,7 @@ export const AirHockey: React.FC = () => {
       ctx.lineWidth = 1.8;
       ctx.stroke();
 
-      // 6. Draw Mallet Player 2 (Top - Crimson Red)
+      // 5. Draw Mallet Player 2 (Red - Top in portrait, Right in landscape)
       const m2 = s.p2Mallet;
       ctx.beginPath();
       ctx.arc(m2.x + 3, m2.y + 4, m2.radius, 0, Math.PI * 2);
@@ -494,7 +699,6 @@ export const AirHockey: React.FC = () => {
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Mallet 2 handle knob
       ctx.beginPath();
       ctx.arc(m2.x, m2.y, m2.radius * 0.44, 0, Math.PI * 2);
       ctx.fillStyle = '#fee2e2';
@@ -503,7 +707,7 @@ export const AirHockey: React.FC = () => {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // 7. Draw Mallet Player 1 (Bottom - Cobalt Blue)
+      // 6. Draw Mallet Player 1 (Blue - Bottom in portrait, Left in landscape)
       const m1 = s.p1Mallet;
       ctx.beginPath();
       ctx.arc(m1.x + 3, m1.y + 4, m1.radius, 0, Math.PI * 2);
@@ -522,7 +726,6 @@ export const AirHockey: React.FC = () => {
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Mallet 1 handle knob
       ctx.beginPath();
       ctx.arc(m1.x, m1.y, m1.radius * 0.44, 0, Math.PI * 2);
       ctx.fillStyle = '#dbeafe';
@@ -542,9 +745,10 @@ export const AirHockey: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(animId);
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleCanvasResize);
     };
-  }, [setGameStatus, servePuck]);
+  }, [setGameStatus, repositionEntities]);
 
   // Coordinate normalizer from viewport pointer to canvas internal dimensions
   const getCanvasCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -564,28 +768,38 @@ export const AirHockey: React.FC = () => {
     e.currentTarget.setPointerCapture(e.pointerId);
     const { x, y } = getCanvasCoords(e);
     const s = stateRef.current;
+    const isLandscapeMode = s.isLandscape;
+
+    const isP1Side = isLandscapeMode ? x < s.width / 2 : y > s.height / 2;
 
     // If not in play, serve immediately on tap!
     if (!s.inPlay && !s.isOver) {
-      servePuck(y > s.height / 2 ? 2 : 1);
+      servePuck(isP1Side ? 2 : 1);
     }
 
-    // Bottom Half -> Player 1 Mallet
-    if (y > s.height / 2) {
+    if (isP1Side) {
       s.p1Mallet.touchId = e.pointerId;
       s.p1Mallet.vx = 0;
       s.p1Mallet.vy = 0;
-      s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, x));
-      s.p1Mallet.y = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+      if (isLandscapeMode) {
+        s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width / 2 - s.p1Mallet.radius, x));
+        s.p1Mallet.y = Math.max(s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+      } else {
+        s.p1Mallet.x = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, x));
+        s.p1Mallet.y = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+      }
       triggerHaptic('light');
-    }
-    // Top Half -> Player 2 Mallet
-    else {
+    } else {
       s.p2Mallet.touchId = e.pointerId;
       s.p2Mallet.vx = 0;
       s.p2Mallet.vy = 0;
-      s.p2Mallet.x = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
-      s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, y));
+      if (isLandscapeMode) {
+        s.p2Mallet.x = Math.max(s.width / 2 + s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
+        s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height - s.p2Mallet.radius, y));
+      } else {
+        s.p2Mallet.x = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
+        s.p2Mallet.y = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, y));
+      }
       triggerHaptic('light');
     }
   };
@@ -593,17 +807,34 @@ export const AirHockey: React.FC = () => {
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasCoords(e);
     const s = stateRef.current;
+    const isLandscapeMode = s.isLandscape;
 
-    if (e.pointerId === s.p1Mallet.touchId || (e.pointerType === 'mouse' && y > s.height / 2)) {
-      const nextX = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, x));
-      const nextY = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+    const isP1Side = isLandscapeMode ? x < s.width / 2 : y > s.height / 2;
+
+    if (e.pointerId === s.p1Mallet.touchId || (e.pointerType === 'mouse' && isP1Side)) {
+      let nextX: number;
+      let nextY: number;
+      if (isLandscapeMode) {
+        nextX = Math.max(s.p1Mallet.radius, Math.min(s.width / 2 - s.p1Mallet.radius, x));
+        nextY = Math.max(s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+      } else {
+        nextX = Math.max(s.p1Mallet.radius, Math.min(s.width - s.p1Mallet.radius, x));
+        nextY = Math.max(s.height / 2 + s.p1Mallet.radius, Math.min(s.height - s.p1Mallet.radius, y));
+      }
       s.p1Mallet.vx = nextX - s.p1Mallet.x;
       s.p1Mallet.vy = nextY - s.p1Mallet.y;
       s.p1Mallet.x = nextX;
       s.p1Mallet.y = nextY;
-    } else if (e.pointerId === s.p2Mallet.touchId || (e.pointerType === 'mouse' && y <= s.height / 2 && s.p2Mallet.touchId !== null)) {
-      const nextX = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
-      const nextY = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, y));
+    } else if (e.pointerId === s.p2Mallet.touchId || (e.pointerType === 'mouse' && !isP1Side && s.p2Mallet.touchId !== null)) {
+      let nextX: number;
+      let nextY: number;
+      if (isLandscapeMode) {
+        nextX = Math.max(s.width / 2 + s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
+        nextY = Math.max(s.p2Mallet.radius, Math.min(s.height - s.p2Mallet.radius, y));
+      } else {
+        nextX = Math.max(s.p2Mallet.radius, Math.min(s.width - s.p2Mallet.radius, x));
+        nextY = Math.max(s.p2Mallet.radius, Math.min(s.height / 2 - s.p2Mallet.radius, y));
+      }
       s.p2Mallet.vx = nextX - s.p2Mallet.x;
       s.p2Mallet.vy = nextY - s.p2Mallet.y;
       s.p2Mallet.x = nextX;
@@ -633,14 +864,17 @@ export const AirHockey: React.FC = () => {
         turn={1}
         scoreP1={scoreP1}
         scoreP2={scoreP2}
-        p1Label="P1 (Bottom)"
-        p2Label="P2 (Top)"
+        p1Label={isLandscape ? 'P1 (Left)' : 'P1 (Bottom)'}
+        p2Label={isLandscape ? 'P2 (Right)' : 'P2 (Top)'}
         onRestart={resetGame}
         statusMessage={statusMessage}
       />
 
       {/* Rink Canvas Container */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 relative touch-none overflow-hidden">
+      <main
+        ref={containerRef}
+        className="flex-1 min-h-0 w-full flex flex-col items-center justify-center p-1.5 sm:p-3 relative touch-none overflow-hidden"
+      >
         {/* Goal Scoring Banner Overlay */}
         {goalFlash !== null && (
           <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center justify-center py-4 bg-black/85 backdrop-blur-md rounded-3xl border-2 border-yellow-400 shadow-2xl animate-bounce">
@@ -671,12 +905,16 @@ export const AirHockey: React.FC = () => {
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{ touchAction: 'none', userSelect: 'none' }}
-          className="w-full h-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-slate-100 border-4 sm:border-6 border-slate-700 cursor-crosshair shadow-2xl"
+          className={`min-h-0 min-w-0 object-contain rounded-3xl sm:rounded-[36px] clubhouse-board-depth bg-slate-100 border-4 sm:border-6 border-slate-700 cursor-crosshair shadow-2xl ${
+            isLandscape
+              ? 'h-full max-h-full w-auto aspect-[1.7/1] max-w-full'
+              : 'h-full max-h-full w-auto aspect-[1/1.7] max-w-full'
+          }`}
         />
       </main>
 
-      {/* Footer Instructions */}
-      <footer className="pb-safe px-4 py-1.5 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753]">
+      {/* Footer Instructions (hidden in landscape to save vertical space) */}
+      <footer className="landscape:hidden pb-safe px-4 py-1.5 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753]">
         <span>Hold phone flat on table between both players</span>
         <span className="text-[11px] bg-accent-light px-2.5 py-0.5 rounded-full border border-[#d8c3a5]/50">
           Target: First to 7
