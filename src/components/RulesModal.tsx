@@ -185,16 +185,28 @@ export const RulesModal: React.FC<RulesModalProps> = ({ gameId, onClose }) => {
               )}
 
               <ul className="space-y-2.5">
-                {rule.howToPlay.map((step, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
-                      {idx + 1}
-                    </span>
-                    <span className="text-xs font-medium leading-relaxed text-slate-200">
-                      {step}
-                    </span>
-                  </li>
-                ))}
+                {rule.howToPlay.map((step, idx) => {
+                  const colonIndex = step.indexOf(':');
+                  const hasPrefix = colonIndex > 0 && colonIndex < 45;
+                  const prefix = hasPrefix ? step.slice(0, colonIndex) : null;
+                  const body = hasPrefix ? step.slice(colonIndex + 1) : step;
+
+                  return (
+                    <li key={idx} className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <div className="text-xs font-medium leading-relaxed text-slate-200">
+                        {prefix && (
+                          <span className="font-black text-emerald-400 uppercase tracking-tight mr-1">
+                            {prefix}:
+                          </span>
+                        )}
+                        <span>{body}</span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}
@@ -211,12 +223,26 @@ export const RulesModal: React.FC<RulesModalProps> = ({ gameId, onClose }) => {
                 </h3>
               </div>
               <div className="space-y-2">
-                {tips.map((tip, idx) => (
-                  <div key={idx} className="flex items-start gap-2 text-xs font-medium leading-relaxed text-amber-100/90">
-                    <span className="text-amber-400 text-sm leading-none mt-0.5">•</span>
-                    <span>{tip}</span>
-                  </div>
-                ))}
+                {tips.map((tip, idx) => {
+                  const colonIndex = tip.indexOf(':');
+                  const hasPrefix = colonIndex > 0 && colonIndex < 45;
+                  const prefix = hasPrefix ? tip.slice(0, colonIndex) : null;
+                  const body = hasPrefix ? tip.slice(colonIndex + 1) : tip;
+
+                  return (
+                    <div key={idx} className="flex items-start gap-2 text-xs font-medium leading-relaxed text-amber-100/90">
+                      <span className="text-amber-400 text-sm leading-none mt-0.5">•</span>
+                      <div>
+                        {prefix && (
+                          <span className="font-black text-amber-300 uppercase tracking-tight mr-1">
+                            {prefix}:
+                          </span>
+                        )}
+                        <span>{body}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}

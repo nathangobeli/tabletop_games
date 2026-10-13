@@ -3,6 +3,7 @@ import { useGame } from '../context/GameContext';
 import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber, GameId } from '../types/game';
 import { triggerHaptic, playTapSound } from '../utils/feedback';
+import { multiplayer, type PeerPresenceInfo } from '../utils/multiplayer';
 import { GameRulesModal } from './GameRulesModal';
 
 export type GamePlayMode = 'pass-and-play' | 'vs-cpu' | 'remote';
@@ -27,6 +28,11 @@ interface GameHeaderProps {
   onToggleGameMode?: (mode: GamePlayMode) => void;
   supportedModes?: GamePlayMode[];
   onOpenRemoteModal?: () => void;
+  latency?: number;
+  turnTimeRemaining?: number;
+  isAwaitingServer?: boolean;
+  peerPresence?: PeerPresenceInfo;
+  localPlayer?: PlayerNumber;
 }
 
 export const GameHeader: React.FC<GameHeaderProps> = ({
@@ -49,6 +55,11 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   onToggleGameMode,
   supportedModes = ['pass-and-play', 'vs-cpu'],
   onOpenRemoteModal,
+  latency,
+  turnTimeRemaining,
+  isAwaitingServer,
+  peerPresence,
+  localPlayer,
 }) => {
   const [showRules, setShowRules] = useState<boolean>(false);
   const { activeGame, resetToMenu, gameMode: ctxGameMode, setGameMode: setCtxGameMode, isCpuThinking } = useGame();
@@ -57,6 +68,27 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   // Mode resolution
   const effectiveGameMode: GamePlayMode = propGameMode ?? (ctxGameMode === 'pve' ? 'vs-cpu' : 'pass-and-play');
   const resolvedP2Label = p2Label ?? (effectiveGameMode === 'vs-cpu' ? '🤖 CPU' : 'Player 2');
+
+  const resolvedLocalPlayer = localPlayer ?? (multiplayer.isLocalHost() ? 1 : 2);
+  const isRemote = effectiveGameMode === 'remote';
+  const effectiveLatency = latency ?? multiplayer.getLatency();
+  const effectivePresence = peerPresence ?? multiplayer.getPresence();
+
+  const finalP1Label = isRemote
+    ? resolvedLocalPlayer === 1
+      ? 'You (P1)'
+      : p1Label && p1Label !== 'Player 1'
+      ? p1Label
+      : 'Opponent (P1)'
+    : p1Label;
+
+  const finalP2Label = isRemote
+    ? resolvedLocalPlayer === 2
+      ? 'You (P2)'
+      : resolvedP2Label && resolvedP2Label !== 'Player 2'
+      ? resolvedP2Label
+      : 'Opponent (P2)'
+    : resolvedP2Label;
 
   const handleModeToggle = (mode: GamePlayMode) => {
     if (onToggleGameMode) {
@@ -70,8 +102,38 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   const targetGameId = gameId || activeGame;
   const displayTitle = title || gameName || 'Game';
   const displaySubtitle = subtitle || subStatusText;
-  const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? p1Label : resolvedP2Label;
+  const activeLabel = turn === 0 ? 'Both Players' : turn === 1 ? finalP1Label : finalP2Label;
   const effectiveStatusMessage = statusMessage || subStatusText || statusText;
+
+  const renderPingIndicator = (isCurrentPlayer: boolean) => {
+    if (!isRemote || !isCurrentPlayer) return null;
+    const isGood = effectiveLatency <= 150;
+    const isMedium = effectiveLatency > 150 && effectiveLatency <= 300;
+    const pingColor = isGood ? 'bg-emerald-400' : isMedium ? 'bg-amber-400' : 'bg-rose-500';
+    return (
+      <span
+        className="inline-flex items-center gap-1 ml-1 text-[9px] font-mono font-bold text-stone-500 shrink-0"
+        title={`Ping: ${effectiveLatency}ms`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${pingColor} animate-pulse`} />
+        <span>{effectiveLatency}ms</span>
+      </span>
+    );
+  };
+
+  const getTurnLabel = () => {
+    if (turn === 0) return 'Simultaneous';
+    if (isRemote) {
+      if (isAwaitingServer) return '⚡ Syncing...';
+      const isMyTurn = turn === resolvedLocalPlayer;
+      const timerStr = turnTimeRemaining !== undefined ? ` (${turnTimeRemaining}s)` : '';
+      return isMyTurn ? `Your Turn${timerStr}` : `Opponent's Turn${timerStr}`;
+    }
+    if (isCpuThinking || effectiveGameMode === 'vs-cpu') {
+      return turn === 2 ? '🤖 CPU Thinking...' : "P1's Turn";
+    }
+    return turn === 1 ? "P1's Turn" : "P2's Turn";
+  };
 
   // Ultra-compact single row for landscape viewports
   if (isLandscape) {
@@ -114,7 +176,8 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
             {/* Player 1 Card / Pill */}
             <div className={`flex items-center gap-1 font-bold ${turn === 1 ? 'text-player-1 font-black' : 'text-stone-600'}`}>
               <span className={`w-2 h-2 rounded-full shrink-0 ${turn === 1 ? 'bg-player-1 ring-2 ring-player-1/40 animate-pulse' : 'bg-player-1/50'}`} />
-              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{p1Label}</span>
+              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{finalP1Label}</span>
+              {renderPingIndicator(resolvedLocalPlayer === 1)}
               {scoreP1 !== undefined && (
                 <span className="tabular-nums bg-white/80 px-1 py-0.2 rounded text-[10px] font-black text-stone-900 border border-black/5">
                   {scoreP1}
@@ -124,6 +187,13 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 
             <span className="text-stone-400 font-bold text-[10px]">:</span>
 
+            {/* Turn Banner in Center */}
+            {isRemote && (
+              <span className="px-2 py-0.2 rounded-full bg-black/10 text-[10px] font-black uppercase text-stone-800">
+                {getTurnLabel()}
+              </span>
+            )}
+
             {/* Player 2 Card / Pill */}
             <div className={`flex items-center gap-1 font-bold ${turn === 2 ? 'text-player-2 font-black' : 'text-stone-600'}`}>
               {scoreP2 !== undefined && (
@@ -131,7 +201,8 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                   {scoreP2}
                 </span>
               )}
-              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{resolvedP2Label}</span>
+              <span className="text-[11px] truncate max-w-[65px] sm:max-w-[85px]">{finalP2Label}</span>
+              {renderPingIndicator(resolvedLocalPlayer === 2)}
               <span className={`w-2 h-2 rounded-full shrink-0 ${turn === 2 ? 'bg-player-2 ring-2 ring-player-2/40 animate-pulse' : 'bg-player-2/50'}`} />
             </div>
 
@@ -420,8 +491,9 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                 }`}
               />
               <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 1 || turn === 0 ? 'text-player-1' : 'text-container-dark/80'}`}>
-                {p1Label}
+                {finalP1Label}
               </span>
+              {renderPingIndicator(resolvedLocalPlayer === 1)}
             </div>
             {scoreP1 !== undefined && (
               <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
@@ -432,7 +504,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 
           {/* Lightweight Persistent Turn Pill / Badge */}
           <div
-            key={`${turn}-${isCpuThinking}`}
+            key={`${turn}-${isCpuThinking}-${turnTimeRemaining}`}
             className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-center transition-all duration-200 shadow-sm flex items-center gap-1 shrink-0 ${
               turn === 0
                 ? 'border-amber-500/50 bg-amber-500/15 text-amber-900 shadow-[0_0_10px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/40'
@@ -456,13 +528,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
               } ring-2 ${turn === 1 ? 'ring-player-1/40' : turn === 2 ? 'ring-player-2/40' : 'ring-amber-500/40'} ${turn === 0 ? '' : 'animate-ping'}`}
             />
             <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wide whitespace-nowrap">
-              {turn === 0
-                ? 'Simultaneous'
-                : turn === 1
-                ? "P1's Turn"
-                : isCpuThinking || effectiveGameMode === 'vs-cpu'
-                ? '🤖 CPU Thinking...'
-                : "P2's Turn"}
+              {getTurnLabel()}
             </span>
           </div>
 
@@ -481,8 +547,9 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                 }`}
               />
               <span className={`text-[10px] sm:text-[11px] font-bold truncate ${turn === 2 || turn === 0 ? 'text-player-2' : 'text-container-dark/80'}`}>
-                {resolvedP2Label}
+                {finalP2Label}
               </span>
+              {renderPingIndicator(resolvedLocalPlayer === 2)}
             </div>
             {scoreP2 !== undefined && (
               <span className="text-[11px] sm:text-xs font-black text-container-dark tabular-nums bg-white/80 px-1.5 sm:px-2 py-0.5 rounded-lg border border-black/5 shrink-0 ml-1">
@@ -491,6 +558,13 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
             )}
           </div>
         </div>
+
+        {/* Reconnection Grace Period Alert Banner */}
+        {isRemote && effectivePresence?.presence === 'reconnecting' && (
+          <div className="bg-amber-500 text-stone-950 font-black text-center py-1 px-3 rounded-lg text-xs tracking-wide shadow-md animate-pulse flex items-center justify-center gap-1.5">
+            <span>⚠️ Opponent reconnecting... ({effectivePresence.secondsLeft ?? 20}s grace period)</span>
+          </div>
+        )}
 
         {/* Dynamic Status / Banner Message */}
         {effectiveStatusMessage && (

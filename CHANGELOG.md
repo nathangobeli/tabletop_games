@@ -5,6 +5,148 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-12 — "Cribbage: 121-Point Classic Tabletop with Tactile Wooden Board & Leapfrog Pegs"
+
+### Added & Architected — Cribbage Module (`src/games/Cribbage.tsx`)
+- **Tactile Wooden Cribbage Board (`WoodenCribbageBoard`)**:
+  - Carved continuous 3-street / 121-point wooden track procedurally rendered via SVG gradients (rich walnut/cherry finish, sunken drilled bevels, and golden finish ring).
+  - 120 drilled peg holes per player arranged in traditional 5-hole blocks with numbers (5, 10, 15... 120), central start hole (hole 0), and 121st "Game" hole.
+  - Skunk line clearly marked at hole 90, Double Skunk at hole 60.
+  - Dual physical pegs per player (Front Peg and Back "Leapfrog" Peg):
+    - Player 1: Polished Brass pegs with specular reflection highlights.
+    - Player 2 / CPU: Brushed Stainless Steel pegs.
+    - Smooth 3D leapfrog arc animation with expanding drop shadow and physical wood clack audio sound (`playWoodClackSound()`) when pegs advance into target holes.
+- **Procedural Linen Playing Cards (`ProceduralCribbageCard`)**:
+  - Zero external raster images: rendered entirely procedurally via SVG and CSS with subtle linen cardstock texture.
+  - Crisp corner suit pips and custom royal face card art: Jack royal helm with crossed swords ⚔️, Queen diadem 👑, King crown ⚜️, suit pips, and card point values.
+- **Tabletop Arena Layout**:
+  - Dealer's Crib box with face-down card stack count and wood-grain badge.
+  - Starter Cut Card raised on a 3D deck cut riser.
+  - Pegging sequence arena with 31 count dial badge, active cycle cards, and real-time point callout banner.
+- **Pure TypeScript Rule & Scoring Engine (`src/utils/cribbageScoring.ts`)**:
+  - 6-card deal with 2-card discard into Dealer's Crib.
+  - Cut card reveal with "Two for His Heels" detection (+2 immediate dealer peg if cut card is Jack).
+  - Pegging phase (Play to 31): 15s (2 pts), pairs/triplets/quads (2, 6, 12 pts), runs (1 pt/card), 31 (2 pts), and Go/Last Card (1 pt).
+  - The Show hand and crib counting in strict tournament order (Non-dealer -> Dealer -> Crib) for authentic walk-off wins at 121 pts:
+    - 15s (2 pts per combo), pairs (2 pts per pair), runs of 3, 4, 5+ (including double and triple runs), 4-card/5-card flushes, and "His Nobs" (+1 for Jack of starter suit).
+    - Itemized breakdown scorecard modal during The Show.
+- **Heuristic CPU Opponent AI (`src/utils/cribbageAi.ts`)**:
+  - Evaluates all $\binom{6}{2} = 15$ discard combinations; optimizes hand synergy and positive crib potential when CPU is dealer, and balks opponent's crib when human is dealer.
+  - Tactical pegging strategy targeting 15s and 31s, avoiding dangerous 5 and 21 leads, trapping opponent pairs with 3-of-a-kind, and claiming Go when legal plays are exhausted.
+- **Authoritative Remote Multiplayer & State Sanitization**:
+  - First-person perspective: local player's hand always rendered at bottom of screen.
+  - Strict WebRTC state masking: opponent client receives only `opponentCardCount` during discard and pegging phases. Cut card and crib remain secret until legal reveal phases.
+  - Built-in 45s turn timer fallback and 20s disconnection grace period.
+  - Terminal win at 121 points connects directly to `GameOverModal` with Skunk / Double Skunk statistics.
+- **Comprehensive Beginner Instructions & In-Game Cheat Sheet**:
+  - Expanded `GAME_RULES.cribbage` with an exhaustive 8-step beginner curriculum covering card values (A=1, face=10), discard mechanics, heels, the play to 31, "Go" rules, walk-off counting priority, and all Show combinations.
+  - Enhanced `RulesModal.tsx` to automatically parse and highlight step and pro-tip headers (`Header: Body`) in high-contrast emerald and amber.
+  - Added an in-game "📜 Rules & Guide" quick button in the tabletop peg score bar and real-time pegging point cheat sheet (`15=2pts • 31=2pts • Pair=2pts • Run=1pt/card • Go=1pt`) directly under the count dial.
+
+## [2.0.0] - 2026-10-12 — "Remote Multiplayer Architecture Upgrade: Authoritative State Sanitization, First-Person Normalization & Network Guards"
+
+### Added & Architected — Authoritative Remote State Sanitization & Data Masking
+- **Battleship (`src/games/Battleship.tsx`)**:
+  - **Zero-Leak Payload Protection**: Client-side inspection of opponent fleets via WebRTC devtools is blocked. Unhit ship coordinates are stripped completely from outgoing payloads during combat.
+  - Defending client processes shots locally on their private board; returning only an isolated hit/miss boolean and sunk vessel identity.
+  - Full coordinates are transmitted via `GAME_OVER_REVEAL` strictly upon terminal match conclusion for post-game inspection.
+- **Last Card / Shedding Card Games (`src/games/LastCard.tsx`)**:
+  - Host authoritatively handles deck management and shuffling.
+  - Remote sync payloads only broadcast `opponentCardCount: number` and the active face-up discard pile card.
+  - Opponent's hand is rendered as `MaskedCardBack` with zero-knowledge of ranks or suits until terminal reveal upon victory.
+- **Riichi Mahjong (`src/games/RiichiMahjong.tsx`)**:
+  - Full remote multiplayer architecture with zero-knowledge Sanma subset dealing.
+  - Active concealed hands are kept private to each client; the opposing client receives only an `opponentTileCount` counter, public wall count, Dora indicator, and public discard river.
+  - Draws are requested authoritatively from Host; drawn tile identity is kept confidential to the drawing player while opponent receives a masked tile count increase.
+  - Opponent rack renders upright authentic wooden/bamboo tile backs (`MaskedMahjongTileGraphic`).
+  - Terminal hand reveal occurs strictly upon declaration of Tsumo or Ron.
+
+### Added — First-Person Perspective Normalization (Home Position)
+- **Eliminated Inverted Screen Transforms**:
+  - Removed local two-player `rotate-180` transforms in remote mode so both players hold their phone naturally.
+  - **Riichi Mahjong**: Both players view their own concealed hand and river at the bottom of the table (Home Position) and view opponent's masked tiles and river across the table at the top.
+  - **Last Card**: Both players view their own card hand at the bottom of the screen with opponent's masked card backs across the table.
+  - **Checkers & Gomoku**: Coordinates automatically invert for Player 2 (`r = 7 - dr`, `c = 7 - dc` / `14 - dr`, `14 - dc`) so both clients view their home pieces advancing from the bottom towards the top of the board.
+
+### Added — Remote Action Guards & Latency Dampening
+- **Optimistic UI with Rollback Guard (`useRemoteMultiplayer.ts`)**:
+  - Dispatches actions and animations immediately upon user tap while locking further inputs via `isAwaitingServer` until peer confirmation or turn token handoff.
+  - Built-in safety auto-unlock timeout (2.5s) guards against network deadlock or dropped data packets.
+- **45-Second Turn Timers**:
+  - Integrated 45-second turn countdown timer across remote matches. Automatically triggers fallback action (auto-discard, auto-move, or penalty draw) on expiration to prevent ghost stalling.
+- **20-Second Disconnection Grace Period**:
+  - Autoritative presence tracking via `visibilitychange` and WebRTC connection monitors.
+  - If a player backgrounds their mobile browser, a 20-second reconnection grace period is granted with a subtle floating alert toast (`"Opponent reconnecting..."`) before forfeiting the match.
+- **Heartbeat & Round-Trip Latency Monitor**:
+  - Lightweight 3-second heartbeat ping loop calculating live round-trip time (RTT in ms).
+
+### Added — Mode-Aware UI Adaptation (`src/components/GameHeader.tsx`, `TurnTransitionModal.tsx`)
+- **Suppressed Pass-Phone Prompts**:
+  - `TurnTransitionModal` automatically returns `null` when `gameMode === 'remote'`, eliminating pass-device dialog interruptions.
+- **Remote Score & Ping Badges**:
+  - Score pills adapt to `"You (P1)"` / `"Opponent (P2)"` with dynamic ping indicator dots (green/amber) and live countdowns without full-screen overlays.
+
+---
+
+## [1.9.2] - 2026-10-12 — "Battleship: Physical Clamshell Case Switching & Realistic Warship Hull Rendering"
+
+### Added & Enhanced — Physical Toy Clamshell Experience (`src/games/Battleship.tsx`)
+- **Seamless Clamshell Top-to-Bottom Board Switching**:
+  - Clicking **"My Fleet"** (either via top navigation or bottom roster tab) now immediately flips the active 10x10 board from the **Top Lid (Targeting Radar)** down to the **Bottom Tray (My Fleet Ocean Grid)**.
+  - Clicking **"Target Radar" / "Top Lid"** seamlessly flips the board back to the upright Radar screen for calling artillery shots.
+  - Synchronized state across both top clamshell tabs and bottom roster indicators via unified `handleSelectView()` handler.
+- **Realistic 3D Molded Warships on the Water Grid**:
+  - Replaced flat colored cells with contiguous metallic gray warship hulls featuring rounded bows (`rounded-l-lg`/`rounded-t-lg`), straight midship hulls, and squared sterns (`rounded-r-md`/`rounded-b-md`).
+  - **3D Peg Insertion on Ships**: When an enemy salvo scores a hit on a friendly warship, the metallic gray ship hull remains intact on the blue ocean grid with a glossy 3D **Red Peg** plugged directly into that segment's pin hole—faithfully matching the physical Hasbro/Milton Bradley toy.
+  - Undamaged ship segments display empty cylindrical dark pin holes ready for incoming pegs.
+  - Open water cells accurately display glossy **Black Pegs** for enemy misses and blue molded pin holes for unshot coordinates.
+- **Physical Clamshell Theming**:
+  - Renamed tactical tabs and headers to **`🎯 TOP LID • RADAR`** and **`🛡️ BOTTOM TRAY • MY FLEET`** with survival counters and glowing active state indicators.
+
+---
+
+## [1.9.1] - 2026-10-12 — "Battleship: Enemy Armada Recon Roster & Decisive Game Over Command"
+
+### Added — Enemy Fleet Recon & Battlefield Intelligence (`src/games/Battleship.tsx`)
+- **Enemy Armada Recon Panel**:
+  - Added dedicated enemy fleet status tracker showing all 5 enemy vessels (Aircraft Carrier, Battleship, Cruiser, Submarine, Patrol Destroyer) with real-time `AFLOAT` vs `💥 SUNK` badges.
+  - Pin-count indicators show remaining lengths of un-sunk ships, enabling strategic hunt deduction.
+  - In landscape: displayed directly under the Targeting Radar on the left.
+  - In portrait: accessible via dual-tab toggle (`🎯 Enemy Armada` vs `🛡️ My Fleet`) directly beneath the active board.
+- **Crystal-Clear Game Over Victory / Defeat Screen**:
+  - Replaced ambiguous "Naval Victory / Fleet Sunk" text with unmissable **`YOU WON!`** (glowing emerald victory badge) or **`YOU LOST!`** (crimson defeat skull).
+  - Explicit narrative subtitle indicating whether you wiped out the enemy fleet or CPU/Opponent sank your warships.
+  - Side-by-side **Fleet Survival Breakdown** showing survivor counts (`X/5 Left`) and detailed ship-by-ship status for both fleets.
+  - Complete engagement performance stats: Salvos Fired, Direct Hits, Misses, and Accuracy %.
+- **Post-Game Battlefield Inspection**:
+  - Added `🔍 Inspect Board` button allowing players to minimize the game over modal and review the battlefield.
+  - In Vs. CPU mode, unhit enemy ship positions are automatically revealed on the radar with ghost anchor icons so players can see where the enemy was hiding.
+- **Fixed Header Fleet Counters**:
+  - Corrected `GameHeader` score display so `Your Fleet` tracks friendly surviving ships and `CPU / Enemy Fleet` tracks opponent surviving ships.
+
+---
+
+## [1.9.0] - 2026-10-12 — "Battleship: 2-Screen Secret Naval Combat & Advanced Radar AI"
+
+### Added — Battleship Tactical Naval Combat (`src/games/Battleship.tsx`, `src/types/game.ts`, `src/types/rules.ts`)
+- **Dedicated 2-Screen Secret Fleet War Room**:
+  - Implemented classic 10x10 naval combat with standard 5-vessel fleet: Aircraft Carrier (5), Battleship (4), Cruiser (3), Submarine (3), and Patrol Destroyer (2).
+  - Designed for **Remote Duel (2 Screens)**: Players look at their own devices, keeping fleet deployments 100% secret.
+  - Zero-Knowledge P2P WebRTC Protocol: Coordinates are never exchanged during deployment; hits and misses are calculated locally and validated on each turn with 50-byte encrypted packets.
+- **Advanced Tactical Radar AI (Vs. CPU)**:
+  - **Parity Hunt Algorithm**: Scans alternating checkerboard sectors to maximize discovery speed for 2+ sector ships.
+  - **Target & Destroy Mode**: Upon scoring a direct hit, locks into orthogonal pursuit (N/S/E/W) along the confirmed ship vector until the vessel is sunk.
+- **Visuals & Tactical Sonar Command Center**:
+  - Deep oceanic steel navy board with tactical grid coordinates (A-J, 1-10).
+  - Dual-grid view: Target Radar (attacking enemy waters with explosion/splash pegs) and Ocean Defense (friendly fleet with damage indicators).
+  - Tactical Fleet Roster with live ship health pips and red "SUNK" stamps.
+  - Tactile ship placement tools: Horizontal/Vertical toggling, auto-deploy randomizer, and fleet confirm countdown.
+- **High-Contrast 3D Peg Engine**:
+  - **Direct Hits**: Rendered as glowing 3D cherry-red spherical pegs with fiery inner cores and glowing red cell borders.
+  - **Misses**: Rendered as raised 3D glossy obsidian-black pegs with slate bevels, silver water-splash centers, and dark cell tiles for instant contrast against the blue plastic board.
+  - Added live high-contrast peg legend badge (`🔴 Hit • ⚫ Miss`).
+---
+
 ## [1.8.8] - 2026-10-12 — "Metered STUN/TURN Relay Server Integration & Mobile Remote Duel Resilience"
 
 ### Added — WebRTC STUN/TURN Relay Servers (`src/utils/multiplayer.ts`)

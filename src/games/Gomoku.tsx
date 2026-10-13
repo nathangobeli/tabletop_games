@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -7,6 +7,7 @@ import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
 import { requestAIMove } from '../utils/aiClient';
 import { multiplayer } from '../utils/multiplayer';
+import { useRemoteMultiplayer } from '../hooks/useRemoteMultiplayer';
 
 const BOARD_SIZE = 15;
 type CellValue = 0 | 1 | 2; // 0 = empty, 1 = P1 (Black), 2 = P2 (White)
@@ -42,6 +43,40 @@ export const Gomoku: React.FC = () => {
   // Score match counts
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
+
+  const autoStoneRef = useRef<() => void>(() => {});
+
+  // Unified Remote Multiplayer Hook
+  const {
+    localPlayer,
+    opponentPlayer,
+    isMyTurn,
+    latency,
+    peerPresence,
+    turnTimeRemaining,
+    isAwaitingServer,
+    setIsAwaitingServer,
+  } = useRemoteMultiplayer({
+    gameId: 'gomoku',
+    turn: typeof turn === 'number' ? turn : 0,
+    gameMode,
+    onTurnTimeout: () => {
+      if (isMyTurn && winner === null && !isThinking) {
+        setStatusMessage('Turn timer expired (45s)! Auto-playing stone...');
+        autoStoneRef.current();
+      }
+    },
+    onPeerForfeit: () => {
+      setWinner(localPlayer);
+      setStatusMessage('Opponent disconnected past grace period. VICTORY!');
+      playWoodClackSound();
+      triggerHaptic('success');
+    },
+  });
+
+  // Perspective Normalization:
+  // In remote mode: if assigned Player 2, flip coordinates internally so pieces render from home perspective
+  const isFlipped = gameMode === 'remote' && localPlayer === 2;
 
   const resetGame = useCallback((isRemote = false) => {
     setGrid(Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0)));
@@ -114,6 +149,7 @@ export const Gomoku: React.FC = () => {
     setHistory((prev) => [...prev, { grid, turn, lastMove, statusMessage }]);
 
     if (gameMode === 'remote' && !isRemote) {
+      setIsAwaitingServer(true);
       multiplayer.send({ type: 'MOVE', payload: { r, c } });
     }
 
@@ -134,6 +170,7 @@ export const Gomoku: React.FC = () => {
       const winnerName = turn === 1 ? 'Player 1 (Black)' : gameMode === 'vs-cpu' ? '🤖 CPU (White)' : 'Player 2 (White)';
       setStatusMessage(`🎉 ${winnerName} connects 5 and wins!`);
       setGameStatus('finished');
+      setIsAwaitingServer(false);
 
       if (turn === 1) setScoreP1((prev) => prev + 1);
       else setScoreP2((prev) => prev + 1);
@@ -146,27 +183,49 @@ export const Gomoku: React.FC = () => {
       setWinner('draw');
       setStatusMessage('Full board! The match ends in a draw.');
       setGameStatus('finished');
+      setIsAwaitingServer(false);
       return;
     }
 
     // Advance turn
     const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
     setTurn(nextPlayer);
+    setIsAwaitingServer(false);
 
     if (gameMode === 'vs-cpu' && nextPlayer === 2) {
       setStatusMessage('🤖 CPU is scanning threat vectors...');
+    } else if (gameMode === 'remote') {
+      setStatusMessage(nextPlayer === localPlayer ? 'Your turn to place a stone!' : 'Opponent is contemplating move...');
     } else {
       setStatusMessage(`Player ${nextPlayer} (${nextPlayer === 1 ? 'Black' : 'White'}): Tap an intersection to place stone`);
     }
-  }, [grid, turn, winner, lastMove, statusMessage, gameMode, setGameStatus]);
+  }, [grid, turn, winner, lastMove, statusMessage, gameMode, localPlayer, setGameStatus, setIsAwaitingServer]);
+
+  // Connect autoStoneRef for 45s turn timer
+  useEffect(() => {
+    autoStoneRef.current = () => {
+      const center = Math.floor(BOARD_SIZE / 2);
+      if (grid[center][center] === 0) {
+        executeStonePlacement(center, center, false);
+        return;
+      }
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (grid[r][c] === 0) {
+            executeStonePlacement(r, c, false);
+            return;
+          }
+        }
+      }
+    };
+  }, [grid, executeStonePlacement]);
 
   const handleIntersectionClick = useCallback((r: number, c: number) => {
     if (winner !== null || isThinking) return;
 
     if (gameMode === 'remote') {
-      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
-      if (turn !== localPlayer) {
-        setStatusMessage('Waiting for remote opponent...');
+      if (!isMyTurn || isAwaitingServer) {
+        setStatusMessage(isAwaitingServer ? '⚡ Syncing stone placement...' : 'Waiting for remote opponent...');
         triggerHaptic('light');
         return;
       }
@@ -181,7 +240,7 @@ export const Gomoku: React.FC = () => {
     }
 
     executeStonePlacement(r, c, false);
-  }, [winner, isThinking, gameMode, turn, grid, executeStonePlacement]);
+  }, [winner, isThinking, gameMode, isMyTurn, isAwaitingServer, grid, executeStonePlacement]);
 
   // Undo Handler
   const handleUndo = useCallback((isRemoteTrigger = false) => {
@@ -298,10 +357,10 @@ export const Gomoku: React.FC = () => {
         title="Gomoku"
         subtitle="Five in a Row"
         turn={turn}
-        scoreP1={scoreP1}
-        scoreP2={scoreP2}
-        p1Label="P1 (Black)"
-        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (White)' : 'P2 (White)'}
+        scoreP1={gameMode === 'remote' ? `${scoreP1} ${localPlayer === 1 ? '(You)' : ''}` : scoreP1}
+        scoreP2={gameMode === 'remote' ? `${scoreP2} ${localPlayer === 2 ? '(You)' : ''}` : scoreP2}
+        p1Label={gameMode === 'remote' ? (localPlayer === 1 ? 'You (Black)' : 'Opponent (Black)') : 'P1 (Black)'}
+        p2Label={gameMode === 'remote' ? (localPlayer === 2 ? 'You (White)' : 'Opponent (White)') : gameMode === 'vs-cpu' ? '🤖 CPU (White)' : 'P2 (White)'}
         onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
         gameMode={gameMode}
@@ -313,6 +372,11 @@ export const Gomoku: React.FC = () => {
         onUndo={handleUndo}
         canUndo={canUndo}
         onOpenRemoteModal={() => setShowRemoteModal(true)}
+        localPlayer={localPlayer}
+        isAwaitingServer={isAwaitingServer}
+        latency={latency}
+        turnTimeRemaining={turnTimeRemaining}
+        peerPresence={peerPresence}
       />
 
       {/* Main Bamboo Board Area - Responsive on iPhone, iPad, PC */}
@@ -384,10 +448,10 @@ export const Gomoku: React.FC = () => {
               {/* 3. Winning Line Connection Beam */}
               {winningLine.length >= 2 && (
                 <line
-                  x1={coords[winningLine[0][1]]}
-                  y1={coords[winningLine[0][0]]}
-                  x2={coords[winningLine[winningLine.length - 1][1]]}
-                  y2={coords[winningLine[winningLine.length - 1][0]]}
+                  x1={coords[isFlipped ? BOARD_SIZE - 1 - winningLine[0][1] : winningLine[0][1]]}
+                  y1={coords[isFlipped ? BOARD_SIZE - 1 - winningLine[0][0] : winningLine[0][0]]}
+                  x2={coords[isFlipped ? BOARD_SIZE - 1 - winningLine[winningLine.length - 1][1] : winningLine[winningLine.length - 1][1]]}
+                  y2={coords[isFlipped ? BOARD_SIZE - 1 - winningLine[winningLine.length - 1][0] : winningLine[winningLine.length - 1][0]]}
                   stroke="#ef4444"
                   strokeWidth="4.5"
                   strokeLinecap="round"
@@ -395,15 +459,17 @@ export const Gomoku: React.FC = () => {
                 />
               )}
 
-              {/* 4. Placed Stones & Touch Targets */}
-              {coords.map((y, r) =>
-                coords.map((x, c) => {
+              {/* 4. Placed Stones & Touch Targets (Perspective Normalization) */}
+              {coords.map((y, dr) =>
+                coords.map((x, dc) => {
+                  const r = isFlipped ? BOARD_SIZE - 1 - dr : dr;
+                  const c = isFlipped ? BOARD_SIZE - 1 - dc : dc;
                   const val = grid[r][c];
                   const isWin = isWinningStone(r, c);
                   const isHover = hoverPos && hoverPos[0] === r && hoverPos[1] === c && val === 0;
 
                   return (
-                    <g key={`cell-${r}-${c}`}>
+                    <g key={`cell-${dr}-${dc}`}>
                       {/* Generous touch hitbox for finger taps on small intersections */}
                       <rect
                         x={x - step / 2}

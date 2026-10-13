@@ -24,7 +24,9 @@ export type GameId =
   | 'hanafuda'
   | 'president'
   | 'last-card'
-  | 'riichi-mahjong';
+  | 'riichi-mahjong'
+  | 'battleship'
+  | 'cribbage';
 
 export type PlayerNumber = 1 | 2;
 

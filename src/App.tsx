@@ -31,6 +31,8 @@ const Hanafuda = React.lazy(() => import('./games/Hanafuda').then((m) => ({ defa
 const President = React.lazy(() => import('./games/President').then((m) => ({ default: m.President })));
 const LastCard = React.lazy(() => import('./games/LastCard').then((m) => ({ default: m.LastCard })));
 const RiichiMahjong = React.lazy(() => import('./games/RiichiMahjong').then((m) => ({ default: m.RiichiMahjong })));
+const Battleship = React.lazy(() => import('./games/Battleship').then((m) => ({ default: m.Battleship })));
+const Cribbage = React.lazy(() => import('./games/Cribbage').then((m) => ({ default: m.Cribbage })));
 
 /**
  * Tactile procedural loading fallback matching clubhouse wood aesthetic
@@ -109,6 +111,10 @@ const AppContent: React.FC = () => {
         return <LastCard />;
       case 'riichi-mahjong':
         return <RiichiMahjong />;
+      case 'battleship':
+        return <Battleship />;
+      case 'cribbage':
+        return <Cribbage />;
       default:
         return <MainMenu />;
     }

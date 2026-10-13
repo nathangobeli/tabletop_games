@@ -1,7 +1,10 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { GameHeader } from '../components/GameHeader';
+import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
+import { RemoteDuelModal } from '../components/RemoteDuelModal';
+import { multiplayer, type RemoteMessage } from '../utils/multiplayer';
+import { useRemoteMultiplayer } from '../hooks/useRemoteMultiplayer';
 import type { PlayerNumber } from '../types/game';
 import {
   playCardPlaceSound,
@@ -44,6 +47,20 @@ export const CREATE_LAST_CARD_DECK = (): LastCardItem[] => {
     rank: c.rankLabel as Rank,
     label: c.rankLabel,
   }));
+};
+
+// Masked Card Back for Opponent (First-Person Perspective Normalization)
+export const MaskedCardBack: React.FC<{ small?: boolean; count?: number }> = ({ small = false }) => {
+  const w = small ? 'w-9 sm:w-11 h-13 sm:h-16' : 'w-12 sm:w-14 h-17 sm:h-20';
+  return (
+    <div
+      className={`relative ${w} rounded-xl bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 border-2 border-indigo-400/40 shadow-md flex items-center justify-center p-1 select-none shrink-0 transition-transform`}
+    >
+      <div className="w-full h-full rounded-lg border border-indigo-500/20 bg-indigo-950/60 flex items-center justify-center">
+        <span className="text-amber-400 text-xs sm:text-sm font-black opacity-60">✦</span>
+      </div>
+    </div>
+  );
 };
 
 export const LastCardGraphic: React.FC<{
@@ -106,8 +123,8 @@ export const LastCardGraphic: React.FC<{
         )}
       </div>
 
-      {/* Bottom Pip Inverted */}
-      <div className="flex items-center justify-between leading-none rotate-180 z-10">
+      {/* Bottom Pip */}
+      <div className="flex items-center justify-between leading-none z-10">
         <span className={`text-xs sm:text-base font-black ${textColor}`}>
           {card.label}
         </span>
@@ -123,12 +140,20 @@ export const LastCardGraphic: React.FC<{
 };
 
 export const LastCard: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, isCpuThinking, setIsCpuThinking } = useGame();
+
+  // Mode and Modals
+  const [gamePlayMode, setGamePlayMode] = useState<GamePlayMode>('vs-cpu');
+  const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
 
   const [drawPile, setDrawPile] = useState<LastCardItem[]>([]);
   const [discardPile, setDiscardPile] = useState<LastCardItem[]>([]);
   const [handP1, setHandP1] = useState<LastCardItem[]>([]);
   const [handP2, setHandP2] = useState<LastCardItem[]>([]);
+
+  // Remote Masked Opponent Tracking
+  const [remoteOpponentCardCount, setRemoteOpponentCardCount] = useState<number>(7);
+  const [remoteRevealedOpponentCards, setRemoteRevealedOpponentCards] = useState<LastCardItem[] | null>(null);
 
   const [turn, setTurn] = useState<PlayerNumber>(1);
   const [activeSuit, setActiveSuit] = useState<Suit>('spades');
@@ -138,11 +163,11 @@ export const LastCard: React.FC = () => {
   const [pendingWildCard, setPendingWildCard] = useState<LastCardItem | null>(null);
 
   const [lastCardCalled, setLastCardCalled] = useState<{ p1: boolean; p2: boolean }>({ p1: false, p2: false });
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Match top card by Suit or Rank.');
+  const [statusMessage, setStatusMessage] = useState<string>('Match top card by Suit or Rank.');
   const [winner, setWinner] = useState<PlayerNumber | null>(null);
 
   // Initialize Game
-  const resetGame = useCallback(() => {
+  const resetGame = useCallback((isRemoteRestart = false) => {
     const deck = shuffleDeck(CREATE_LAST_CARD_DECK());
     const { hands, remaining: undealt } = dealCards(deck, [7, 7]);
     const [p1, p2] = hands;
@@ -165,30 +190,91 @@ export const LastCard: React.FC = () => {
     setActiveSuit(starter.suit);
     setHandP1(p1);
     setHandP2(p2);
+    setRemoteOpponentCardCount(7);
+    setRemoteRevealedOpponentCards(null);
     setTurn(1);
     setStackedDrawCount(0);
     setShowSuitPicker(false);
     setPendingWildCard(null);
     setLastCardCalled({ p1: false, p2: false });
     setWinner(null);
-    setStatusMessage('Player 1: Match top card by Suit or Rank.');
+    setStatusMessage('Match top card by Suit or Rank.');
     setGameStatus('active');
-  }, [setGameStatus]);
+
+    if (gamePlayMode === 'remote' && !isRemoteRestart) {
+      if (multiplayer.isLocalHost()) {
+        // Authoritative Deal: Host sends Guest their cards only (P1 cards stripped!)
+        multiplayer.send({
+          type: 'CARD_ACTION',
+          gameId: 'last-card',
+          payload: {
+            action: 'DEAL',
+            yourHand: p2,
+            starter,
+            opponentCardCount: p1.length,
+            drawPileCount: remainingDeck.length,
+            activeSuit: starter.suit,
+          },
+        });
+      } else {
+        multiplayer.send({
+          type: 'RESTART',
+          gameId: 'last-card',
+        });
+      }
+    }
+  }, [gamePlayMode, setGameStatus]);
 
   // Initial deal
-  useState(() => {
+  useEffect(() => {
     resetGame();
+  }, [resetGame]);
+
+  // Remote Synchronization Hook
+  const {
+    localPlayer,
+    isMyTurn,
+    latency,
+    peerPresence,
+    turnTimeRemaining,
+    isAwaitingServer,
+    setIsAwaitingServer,
+  } = useRemoteMultiplayer({
+    gameId: 'last-card',
+    turn,
+    gameMode: gamePlayMode,
+    onTurnTimeout: () => {
+      // 45s timer expired: auto-draw penalty card
+      if (isMyTurn && winner === null) {
+        setStatusMessage('Turn timer expired (45s)! Auto-drawing penalty card...');
+        handleDrawButton();
+      }
+    },
+    onPeerForfeit: () => {
+      setWinner(localPlayer);
+      setStatusMessage('Opponent disconnected past grace period. VICTORY!');
+      triggerHaptic('success');
+    },
   });
 
   const topDiscard = discardPile[discardPile.length - 1];
-  const activeHand = turn === 1 ? handP1 : handP2;
+
+  // Perspective Normalization:
+  // In remote mode: local player always views their own hand at the bottom!
+  const myHand = useMemo(() => {
+    if (gamePlayMode === 'remote') {
+      return localPlayer === 1 ? handP1 : handP2;
+    }
+    return turn === 1 ? handP1 : handP2;
+  }, [gamePlayMode, localPlayer, turn, handP1, handP2]);
 
   // Check if a card is legally playable
   const isCardPlayable = useCallback(
     (card: LastCardItem): boolean => {
       if (!topDiscard) return false;
+      if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return false;
 
-      // If there is an active Draw-2 penalty stack: only another 2 can be played!
+      // If active Draw-2 stack: only another 2 can counter!
       if (stackedDrawCount > 0) {
         return card.rank === '2';
       }
@@ -199,31 +285,30 @@ export const LastCard: React.FC = () => {
       // Match active suit OR matching rank
       return card.suit === activeSuit || card.rank === topDiscard.rank;
     },
-    [topDiscard, activeSuit, stackedDrawCount]
+    [topDiscard, activeSuit, stackedDrawCount, gamePlayMode, isMyTurn, isAwaitingServer]
   );
 
   const playableCardCount = useMemo(() => {
-    return activeHand.filter(isCardPlayable).length;
-  }, [activeHand, isCardPlayable]);
+    return myHand.filter(isCardPlayable).length;
+  }, [myHand, isCardPlayable]);
 
-  // Draw cards helper
+  // Draw cards helper (local)
   const drawCards = useCallback(
     (count: number, player: PlayerNumber): LastCardItem[] => {
       let currentDeck = [...drawPile];
       let currentDiscards = [...discardPile];
 
       if (currentDeck.length < count && currentDiscards.length > 1) {
-        // Reshuffle discards except top
         const top = currentDiscards.pop()!;
         const recycled = shuffleDeck(currentDiscards);
         currentDeck = [...currentDeck, ...recycled];
         currentDiscards = [top];
-        setDiscardPile(currentDiscards);
+        setDiscardPile([top]);
       }
 
       const drawn = currentDeck.slice(0, count);
-      const remainingDeck = currentDeck.slice(count);
-      setDrawPile(remainingDeck);
+      const remaining = currentDeck.slice(count);
+      setDrawPile(remaining);
 
       if (player === 1) {
         setHandP1((prev) => [...prev, ...drawn]);
@@ -231,31 +316,10 @@ export const LastCard: React.FC = () => {
         setHandP2((prev) => [...prev, ...drawn]);
       }
 
-      playCardPlaceSound();
-      triggerHaptic('medium');
       return drawn;
     },
     [drawPile, discardPile]
   );
-
-  // Handle playing a card
-  const handlePlayCard = (card: LastCardItem) => {
-    if (gameMode === 'pve' && turn === 2) return;
-    if (!isCardPlayable(card)) return;
-
-    // Check "Last Card" penalty: if player had 2 cards and did NOT call Last Card!
-    const hadTwoCards = activeHand.length === 2;
-    const isCalled = turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2;
-
-    if (card.rank === '8') {
-      // Prompt suit picker
-      setPendingWildCard(card);
-      setShowSuitPicker(true);
-      return;
-    }
-
-    executeCardPlay(card, card.suit, hadTwoCards && !isCalled);
-  };
 
   // Complete card play
   const executeCardPlay = useCallback(
@@ -265,11 +329,19 @@ export const LastCard: React.FC = () => {
 
       card.rotationJitter = (Math.random() - 0.5) * 16;
 
-      // Remove from hand
-      const currentHand = turn === 1 ? handP1 : handP2;
+      const currentHand = gamePlayMode === 'remote'
+        ? (localPlayer === 1 ? handP1 : handP2)
+        : (turn === 1 ? handP1 : handP2);
+
       const nextHand = currentHand.filter((c) => c.id !== card.id);
-      if (turn === 1) setHandP1(nextHand);
-      else setHandP2(nextHand);
+
+      if (gamePlayMode === 'remote') {
+        if (localPlayer === 1) setHandP1(nextHand);
+        else setHandP2(nextHand);
+      } else {
+        if (turn === 1) setHandP1(nextHand);
+        else setHandP2(nextHand);
+      }
 
       setDiscardPile((prev) => [...prev, card]);
       setActiveSuit(chosenSuit);
@@ -288,6 +360,19 @@ export const LastCard: React.FC = () => {
         triggerHaptic('success');
         setWinner(turn);
         setStatusMessage(`Player ${turn} emptied their hand and won LAST CARD! Victory!`);
+
+        if (gamePlayMode === 'remote') {
+          multiplayer.send({
+            type: 'CARD_ACTION',
+            gameId: 'last-card',
+            payload: {
+              action: 'WIN',
+              winner: turn,
+              playedCard: card,
+              chosenSuit,
+            },
+          });
+        }
         return;
       }
 
@@ -297,69 +382,141 @@ export const LastCard: React.FC = () => {
       // Action Card Consequences
       const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
 
-      // 1. Draw 2 (+2)
+      let nextTurnPlayer: PlayerNumber = nextPlayer;
+      let nextStack = stackedDrawCount;
+
       if (card.rank === '2') {
-        const newStack = stackedDrawCount + 2;
-        setStackedDrawCount(newStack);
+        nextStack = stackedDrawCount + 2;
+        setStackedDrawCount(nextStack);
         setTurn(nextPlayer);
-        setStatusMessage(`Player ${turn} played a 2! Player ${nextPlayer} must counter with a 2 or draw ${newStack}!`);
-        return;
-      }
-
-      // 2. Ace (Play Again)
-      if (card.rank === 'A') {
+        setStatusMessage(`Player ${turn} played a 2! Player ${nextPlayer} must counter or draw ${nextStack}!`);
+      } else if (card.rank === 'A' || card.rank === 'J') {
+        // Extra turn / Skip
         playCaptureSound();
-        setStatusMessage(`Player ${turn} played an Ace! Extra turn!`);
-        return;
-      }
-
-      // 3. Jack (Skip Opponent)
-      if (card.rank === 'J') {
-        playCaptureSound();
-        setStatusMessage(`Player ${turn} played a Jack! Skipped opponent, play again!`);
-        return;
-      }
-
-      // 4. Wild 8
-      if (card.rank === '8') {
+        nextTurnPlayer = turn;
+        setStatusMessage(`Player ${turn} played ${card.rank === 'A' ? 'an Ace' : 'a Jack'}! Extra turn!`);
+      } else if (card.rank === '8') {
         setTurn(nextPlayer);
         setStatusMessage(`Player ${turn} played Wild 8 and chose ${SUIT_NAMES[chosenSuit]}! Player ${nextPlayer}'s turn.`);
-        return;
+      } else {
+        setTurn(nextPlayer);
+        setStatusMessage(`Player ${turn} played ${card.label} of ${SUIT_NAMES[chosenSuit]}. Player ${nextPlayer}'s turn.`);
       }
 
-      // Normal play
-      setTurn(nextPlayer);
-      setStatusMessage(`Player ${turn} played ${card.label} of ${SUIT_NAMES[chosenSuit]}. Player ${nextPlayer}'s turn.`);
+      // Broadcast sanitized play in Remote mode (Private cards stripped!)
+      if (gamePlayMode === 'remote') {
+        setIsAwaitingServer(true);
+        multiplayer.send({
+          type: 'CARD_ACTION',
+          gameId: 'last-card',
+          payload: {
+            action: 'PLAY',
+            playedCard: card,
+            chosenSuit,
+            hadTwoCardsAndCalled: !penaltyForgotLastCard,
+            remainingCount: nextHand.length,
+            nextTurn: nextTurnPlayer,
+            stackedDrawCount: nextStack,
+          },
+        });
+      }
     },
-    [turn, handP1, handP2, drawCards, stackedDrawCount]
+    [
+      gamePlayMode,
+      localPlayer,
+      turn,
+      handP1,
+      handP2,
+      drawCards,
+      stackedDrawCount,
+      setIsAwaitingServer,
+    ]
   );
 
-  // Draw Card Button Action (Voluntary draw or resolving Draw-2 penalty)
-  const handleDrawButton = () => {
-    if (gameMode === 'pve' && turn === 2) return;
-    if (stackedDrawCount > 0) {
-      // Must draw penalty cards
-      drawCards(stackedDrawCount, turn);
-      setStatusMessage(`Player ${turn} drew ${stackedDrawCount} penalty cards!`);
-      setStackedDrawCount(0);
-      const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-      setTurn(nextPlayer);
+  // Play Card Handler
+  const handlePlayCard = (card: LastCardItem) => {
+    if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
+    if (gamePlayMode === 'pve' && turn === 2) return;
+
+    const hadTwoCards = myHand.length === 2;
+    const isCalled = (gamePlayMode === 'remote' ? localPlayer === 1 : turn === 1)
+      ? lastCardCalled.p1
+      : lastCardCalled.p2;
+
+    if (card.rank === '8') {
+      setPendingWildCard(card);
+      setShowSuitPicker(true);
       return;
     }
 
-    // Normal single card draw
+    executeCardPlay(card, card.suit, hadTwoCards && !isCalled);
+  };
+
+  // Draw Card Action
+  const handleDrawButton = () => {
+    if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
+    if (gamePlayMode === 'pve' && turn === 2) return;
+
+    if (gamePlayMode === 'remote') {
+      setIsAwaitingServer(true);
+      const count = stackedDrawCount > 0 ? stackedDrawCount : 1;
+
+      if (multiplayer.isLocalHost()) {
+        // Host draws locally
+        drawCards(count, 1);
+        setStackedDrawCount(0);
+        const nextPlayer: PlayerNumber = 2;
+        setTurn(nextPlayer);
+
+        multiplayer.send({
+          type: 'CARD_ACTION',
+          gameId: 'last-card',
+          payload: {
+            action: 'DRAW_EVENT',
+            drawCount: count,
+            newCardCount: handP1.length + count,
+            remainingDrawPileCount: Math.max(0, drawPile.length - count),
+            nextTurn: nextPlayer,
+          },
+        });
+        setIsAwaitingServer(false);
+      } else {
+        // Guest requests cards from Host
+        multiplayer.send({
+          type: 'CARD_ACTION',
+          gameId: 'last-card',
+          payload: {
+            action: 'REQUEST_DRAW',
+            drawCount: count,
+            nextTurn: 1,
+          },
+        });
+      }
+      return;
+    }
+
+    // Local / PvE Draw
+    if (stackedDrawCount > 0) {
+      drawCards(stackedDrawCount, turn);
+      setStatusMessage(`Player ${turn} drew ${stackedDrawCount} penalty cards!`);
+      setStackedDrawCount(0);
+      setTurn(turn === 1 ? 2 : 1);
+      return;
+    }
+
     drawCards(1, turn);
     setStatusMessage(`Player ${turn} drew a card. Turn passed.`);
-    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-    setTurn(nextPlayer);
+    setTurn(turn === 1 ? 2 : 1);
   };
 
   // Suit selection for Wild 8
   const handleSelectSuit = (suit: Suit) => {
     if (!pendingWildCard) return;
     const card = pendingWildCard;
-    const hadTwoCards = activeHand.length === 2;
-    const isCalled = turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2;
+    const hadTwoCards = myHand.length === 2;
+    const isCalled = (gamePlayMode === 'remote' ? localPlayer === 1 : turn === 1)
+      ? lastCardCalled.p1
+      : lastCardCalled.p2;
 
     setShowSuitPicker(false);
     setPendingWildCard(null);
@@ -368,23 +525,141 @@ export const LastCard: React.FC = () => {
 
   // Toggle "LAST CARD" Callout
   const handleToggleLastCard = () => {
-    if (gameMode === 'pve' && turn === 2) return;
+    if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
+    if (gamePlayMode === 'pve' && turn === 2) return;
+
     triggerHaptic('success');
     playCaptureSound();
+
+    const roleKey = (gamePlayMode === 'remote' ? localPlayer === 1 : turn === 1) ? 'p1' : 'p2';
+
     setLastCardCalled((prev) => {
-      const nextState = !prev[turn === 1 ? 'p1' : 'p2'];
+      const nextState = !prev[roleKey];
       setStatusMessage(
         nextState
           ? `📢 Player ${turn} called "LAST CARD!" Ready to play.`
           : `Player ${turn} cancelled "Last Card" call.`
       );
-      return { ...prev, [turn === 1 ? 'p1' : 'p2']: nextState };
+
+      if (gamePlayMode === 'remote') {
+        multiplayer.send({
+          type: 'CARD_ACTION',
+          gameId: 'last-card',
+          payload: { action: 'CALL_LAST_CARD', called: nextState, player: localPlayer },
+        });
+      }
+
+      return { ...prev, [roleKey]: nextState };
     });
   };
 
+  // WebRTC Remote Duel Listeners with Strict State Scrubbing
+  useEffect(() => {
+    if (gamePlayMode !== 'remote') return;
+
+    const unbind = multiplayer.onMessage((msg: RemoteMessage) => {
+      if (msg.gameId !== 'last-card') return;
+
+      if (msg.type === 'CARD_ACTION') {
+        const { action } = msg.payload;
+
+        if (action === 'DEAL') {
+          // Guest receives deal from Host (P1 cards remain stripped!)
+          setHandP2(msg.payload.yourHand);
+          setDiscardPile([msg.payload.starter]);
+          setActiveSuit(msg.payload.activeSuit);
+          setRemoteOpponentCardCount(msg.payload.opponentCardCount);
+          setTurn(1);
+          setStackedDrawCount(0);
+          setWinner(null);
+          setStatusMessage('Game started! Host is Player 1.');
+        } else if (action === 'PLAY') {
+          // Opponent played a card
+          setIsAwaitingServer(false);
+          const { playedCard, chosenSuit, remainingCount, nextTurn, stackedDrawCount: newStack } = msg.payload;
+
+          setDiscardPile((prev) => [...prev, playedCard]);
+          setActiveSuit(chosenSuit);
+          setRemoteOpponentCardCount(remainingCount);
+          setTurn(nextTurn);
+          if (newStack !== undefined) setStackedDrawCount(newStack);
+
+          playCardPlaceSound();
+          triggerHaptic('medium');
+          setStatusMessage(`Opponent played ${playedCard.label} of ${SUIT_NAMES[chosenSuit]}.`);
+        } else if (action === 'DRAW_EVENT') {
+          // Host informed Guest of a draw
+          setIsAwaitingServer(false);
+          setRemoteOpponentCardCount(msg.payload.newCardCount);
+          setTurn(msg.payload.nextTurn);
+          setStackedDrawCount(0);
+          setStatusMessage('Opponent drew a card.');
+        } else if (action === 'REQUEST_DRAW') {
+          // Host handles Guest draw request
+          const count = msg.payload.drawCount;
+          const currentDeck = [...drawPile];
+          const drawn = currentDeck.slice(0, count);
+          const remaining = currentDeck.slice(count);
+          setDrawPile(remaining);
+
+          setRemoteOpponentCardCount((prev) => prev + count);
+          setStackedDrawCount(0);
+          setTurn(msg.payload.nextTurn);
+
+          // Reply with ONLY the drawn cards to the guest
+          multiplayer.send({
+            type: 'CARD_ACTION',
+            gameId: 'last-card',
+            payload: {
+              action: 'DRAW_REPLY',
+              drawnCards: drawn,
+              nextTurn: msg.payload.nextTurn,
+            },
+          });
+        } else if (action === 'DRAW_REPLY') {
+          // Guest receives drawn cards from Host
+          setIsAwaitingServer(false);
+          setHandP2((prev) => [...prev, ...msg.payload.drawnCards]);
+          setTurn(msg.payload.nextTurn);
+          setStackedDrawCount(0);
+          setStatusMessage('You drew your card(s). Turn passed.');
+        } else if (action === 'CALL_LAST_CARD') {
+          const oppKey = localPlayer === 1 ? 'p2' : 'p1';
+          setLastCardCalled((prev) => ({ ...prev, [oppKey]: msg.payload.called }));
+          if (msg.payload.called) {
+            triggerHaptic('warning');
+            setStatusMessage('📢 Opponent called "LAST CARD!"');
+          }
+        } else if (action === 'WIN') {
+          setIsAwaitingServer(false);
+          setWinner(msg.payload.winner);
+          setDiscardPile((prev) => [...prev, msg.payload.playedCard]);
+          setStatusMessage(`Opponent played their last card and won!`);
+          triggerHaptic('error');
+
+          // Send our remaining cards for post-game inspection
+          multiplayer.send({
+            type: 'CARD_ACTION',
+            gameId: 'last-card',
+            payload: {
+              action: 'REVEAL_HAND',
+              cards: localPlayer === 1 ? handP1 : handP2,
+            },
+          });
+        } else if (action === 'REVEAL_HAND') {
+          setRemoteRevealedOpponentCards(msg.payload.cards);
+        }
+      } else if (msg.type === 'RESTART') {
+        resetGame(true);
+      }
+    });
+
+    return unbind;
+  }, [gamePlayMode, localPlayer, drawPile, handP1, handP2, resetGame, setIsAwaitingServer]);
+
   // Non-blocking CPU AI loop for PvE mode
   useEffect(() => {
-    if (gameMode !== 'pve' || turn !== 2 || winner !== null) return;
+    if (gamePlayMode !== 'vs-cpu' || turn !== 2 || winner !== null) return;
     if (!topDiscard) return;
 
     setIsCpuThinking(true);
@@ -428,7 +703,7 @@ export const LastCard: React.FC = () => {
       setIsCpuThinking(false);
     };
   }, [
-    gameMode,
+    gamePlayMode,
     turn,
     winner,
     handP2,
@@ -446,8 +721,20 @@ export const LastCard: React.FC = () => {
         gameId="last-card"
         gameName="Last Card"
         turn={turn}
-        onRestart={resetGame}
+        onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
+        gameMode={gamePlayMode}
+        onToggleGameMode={(m) => {
+          setGamePlayMode(m);
+          resetGame(false);
+        }}
+        supportedModes={['remote', 'vs-cpu', 'pass-and-play']}
+        onOpenRemoteModal={() => setShowRemoteModal(true)}
+        latency={latency}
+        turnTimeRemaining={turnTimeRemaining}
+        isAwaitingServer={isAwaitingServer}
+        peerPresence={peerPresence}
+        localPlayer={localPlayer}
       />
 
       {/* Main Table - Full-Viewport Responsive Scaling */}
@@ -457,7 +744,10 @@ export const LastCard: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-player-1" />
             <span className={`text-xs font-black ${turn === 1 ? 'text-player-1' : 'text-stone-400'}`}>
-              P1 Cards: {handP1.length}
+              {gamePlayMode === 'remote' ? (localPlayer === 1 ? 'You' : 'Opponent') : 'P1'}:{' '}
+              {gamePlayMode === 'remote'
+                ? (localPlayer === 1 ? handP1.length : remoteOpponentCardCount)
+                : handP1.length} cards
             </span>
             {lastCardCalled.p1 && (
               <span className="text-[9px] bg-rose-500 text-white px-1.5 py-0.5 rounded font-black uppercase animate-pulse">
@@ -485,22 +775,46 @@ export const LastCard: React.FC = () => {
               </span>
             )}
             <span className={`text-xs font-black ${turn === 2 ? 'text-player-2' : 'text-stone-400'}`}>
-              P2 Cards: {handP2.length}
+              {gamePlayMode === 'remote' ? (localPlayer === 2 ? 'You' : 'Opponent') : 'P2'}:{' '}
+              {gamePlayMode === 'remote'
+                ? (localPlayer === 2 ? handP2.length : remoteOpponentCardCount)
+                : handP2.length} cards
             </span>
             <span className="w-3 h-3 rounded-full bg-player-2" />
           </div>
         </div>
 
+        {/* Remote Mode: Opponent Masked Hand at Top (First-Person View) */}
+        {gamePlayMode === 'remote' && (
+          <div className="w-full flex items-center justify-center gap-0.5 py-1 px-2 overflow-x-hidden">
+            {Array.from({ length: Math.min(remoteOpponentCardCount, 12) }).map((_, idx) => (
+              <div key={idx} className="-ml-3 first:ml-0 transition-all">
+                <MaskedCardBack small />
+              </div>
+            ))}
+            {remoteOpponentCardCount > 12 && (
+              <span className="text-[10px] font-bold text-stone-400 ml-1">
+                +{remoteOpponentCardCount - 12}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Central Parlor Discard Mat */}
         <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center py-1">
-          <div className="w-full h-full max-h-[46vh] bg-[#1e1b4b] rounded-3xl border-4 border-[#0f0c36] shadow-2xl p-3 flex flex-col items-center justify-between relative overflow-hidden clubhouse-board-depth">
+          <div className="w-full h-full max-h-[44vh] bg-[#1e1b4b] rounded-3xl border-4 border-[#0f0c36] shadow-2xl p-3 flex flex-col items-center justify-between relative overflow-hidden clubhouse-board-depth">
             {/* Draw Pile & Discard Center Table */}
             <div className="flex-1 w-full flex items-center justify-center gap-8">
               {/* Draw Pile */}
               <button
                 type="button"
                 onClick={handleDrawButton}
-                className="relative w-15 sm:w-18 h-22 sm:h-26 rounded-2xl bg-gradient-to-b from-blue-700 to-indigo-900 border-2 border-white/40 shadow-xl flex flex-col items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                disabled={gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)}
+                className={`relative w-15 sm:w-18 h-22 sm:h-26 rounded-2xl bg-gradient-to-b from-blue-700 to-indigo-900 border-2 border-white/40 shadow-xl flex flex-col items-center justify-center transition-all ${
+                  gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)
+                    ? 'opacity-60 cursor-not-allowed'
+                    : 'cursor-pointer hover:scale-105 active:scale-95'
+                }`}
               >
                 <span className="text-white text-xs font-black uppercase tracking-wider">
                   {stackedDrawCount > 0 ? `Draw ${stackedDrawCount}` : 'Draw'}
@@ -540,7 +854,8 @@ export const LastCard: React.FC = () => {
               <button
                 type="button"
                 onClick={handleDrawButton}
-                className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-stone-200 font-black text-xs uppercase tracking-wider active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                disabled={gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)}
+                className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-stone-200 font-black text-xs uppercase tracking-wider active:scale-95 transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
               >
                 <span>📥</span>
                 <span>{stackedDrawCount > 0 ? `Draw +${stackedDrawCount}` : 'Draw Card'}</span>
@@ -550,15 +865,16 @@ export const LastCard: React.FC = () => {
               <button
                 type="button"
                 onClick={handleToggleLastCard}
-                className={`px-5 py-2 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all flex items-center gap-1.5 ${
-                  (turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2)
+                disabled={gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)}
+                className={`px-5 py-2 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-50 ${
+                  (gamePlayMode === 'remote' ? (localPlayer === 1 ? lastCardCalled.p1 : lastCardCalled.p2) : (turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2))
                     ? 'bg-rose-600 text-white ring-2 ring-rose-400 animate-pulse'
                     : 'bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 hover:from-amber-400'
                 }`}
               >
                 <span>📢</span>
                 <span>
-                  {(turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2)
+                  {(gamePlayMode === 'remote' ? (localPlayer === 1 ? lastCardCalled.p1 : lastCardCalled.p2) : (turn === 1 ? lastCardCalled.p1 : lastCardCalled.p2))
                     ? 'LAST CARD Called!'
                     : 'Call "LAST CARD"'}
                 </span>
@@ -598,11 +914,11 @@ export const LastCard: React.FC = () => {
           </div>
         )}
 
-        {/* Active Player Hand Display */}
+        {/* Active Player Hand Display (Home Position at Bottom) */}
         <div className="w-full flex flex-col items-center shrink-0 px-1">
           <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-300 mb-1 px-2">
             <span>
-              Player {turn}'s Hand ({activeHand.length} cards)
+              {gamePlayMode === 'remote' ? 'Your Hand' : `Player ${turn}'s Hand`} ({myHand.length} cards)
             </span>
             <span className="text-amber-400/80 text-[10px]">
               {playableCardCount > 0 ? `${playableCardCount} playable card${playableCardCount > 1 ? 's' : ''}` : 'No matches: tap Draw'}
@@ -610,7 +926,7 @@ export const LastCard: React.FC = () => {
           </div>
 
           <div className="w-full flex items-center justify-center gap-1 sm:gap-1.5 overflow-x-auto py-2 px-2">
-            {activeHand.map((card) => {
+            {myHand.map((card) => {
               const playable = isCardPlayable(card);
               return (
                 <LastCardGraphic
@@ -642,10 +958,16 @@ export const LastCard: React.FC = () => {
               p2Value: `${discardPile.length} cards played`,
             },
           ]}
-          onRestart={resetGame}
+          onRestart={() => resetGame(false)}
           onMenu={resetToMenu}
         />
       )}
+
+      {/* Remote Room Pairing Modal */}
+      <RemoteDuelModal
+        isOpen={showRemoteModal}
+        onClose={() => setShowRemoteModal(false)}
+      />
     </div>
   );
 };

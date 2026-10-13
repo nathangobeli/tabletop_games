@@ -1,12 +1,13 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import { RemoteDuelModal } from '../components/RemoteDuelModal';
 import type { PlayerNumber } from '../types/game';
-import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
+import { triggerHaptic, playCaptureSound, playWoodClackSound, playVictorySound } from '../utils/feedback';
 import { requestAIMove } from '../utils/aiClient';
 import { multiplayer } from '../utils/multiplayer';
+import { useRemoteMultiplayer } from '../hooks/useRemoteMultiplayer';
 
 // 8x8 Board representation:
 // 0 = empty
@@ -83,6 +84,41 @@ export const Checkers: React.FC = () => {
     }
     return { p1Count: p1, p2Count: p2 };
   }, [board]);
+
+  // Forward ref for auto-move on timeout
+  const autoMoveRef = useRef<() => void>(() => {});
+
+  // Unified Remote Multiplayer Hook
+  const {
+    localPlayer,
+    opponentPlayer,
+    isMyTurn,
+    latency,
+    peerPresence,
+    turnTimeRemaining,
+    isAwaitingServer,
+    setIsAwaitingServer,
+  } = useRemoteMultiplayer({
+    gameId: 'checkers',
+    turn,
+    gameMode,
+    onTurnTimeout: () => {
+      if (isMyTurn && winner === null && !isAnimating) {
+        setStatusMessage('Turn timer expired (45s)! Auto-playing move...');
+        autoMoveRef.current();
+      }
+    },
+    onPeerForfeit: () => {
+      setWinner(localPlayer);
+      setStatusMessage('Opponent disconnected past grace period. VICTORY!');
+      playVictorySound();
+      triggerHaptic('success');
+    },
+  });
+
+  // Perspective Normalization:
+  // In remote mode: if assigned Player 2, flip coordinates internally so pieces render at bottom
+  const isFlipped = gameMode === 'remote' && localPlayer === 2;
 
   const resetGame = useCallback((isRemote = false) => {
     setBoard(createInitialBoard());
@@ -271,6 +307,7 @@ export const Checkers: React.FC = () => {
     }
 
     if (gameMode === 'remote' && !isRemote) {
+      setIsAwaitingServer(true);
       multiplayer.send({
         type: 'MOVE',
         payload: { fromR, fromC, toR, toC, capturedR, capturedC },
@@ -326,6 +363,7 @@ export const Checkers: React.FC = () => {
 
     setTimeout(() => {
       setIsAnimating(false);
+      setIsAwaitingServer(false);
       const isOver = checkGameOver(nextBoard, nextPlayer);
 
       if (!isOver) {
@@ -333,20 +371,45 @@ export const Checkers: React.FC = () => {
         setGameStatus('active');
         if (gameMode === 'vs-cpu' && nextPlayer === 2) {
           setStatusMessage('🤖 CPU is analyzing board positions...');
+        } else if (gameMode === 'remote') {
+          setStatusMessage(nextPlayer === localPlayer ? 'Your turn to move!' : 'Opponent is contemplating move...');
         } else {
           setStatusMessage(`Player ${nextPlayer}'s turn (${nextPlayer === 1 ? 'Red' : 'Dark'}).`);
         }
       }
     }, 320);
-  }, [board, turn, inMultiJump, statusMessage, gameMode, getJumpsForPiece, checkGameOver, setGameStatus]);
+  }, [board, turn, inMultiJump, statusMessage, gameMode, localPlayer, getJumpsForPiece, checkGameOver, setGameStatus, setIsAwaitingServer]);
+
+  // Connect autoMoveRef for 45s turn timer
+  useEffect(() => {
+    autoMoveRef.current = () => {
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          if (isPlayerPiece(board[r][c], localPlayer)) {
+            const jumps = getJumpsForPiece(board, r, c, localPlayer);
+            if (jumps.length > 0) {
+              const j = jumps[0];
+              executeMove(r, c, j.toR, j.toC, j.capturedR, j.capturedC, false);
+              return;
+            }
+            const moves = getSimpleMovesForPiece(board, r, c, localPlayer);
+            if (moves.length > 0) {
+              const m = moves[0];
+              executeMove(r, c, m[0], m[1], -1, -1, false);
+              return;
+            }
+          }
+        }
+      }
+    };
+  }, [board, localPlayer, getJumpsForPiece, getSimpleMovesForPiece, executeMove]);
 
   const handleSquareClick = useCallback((r: number, c: number) => {
     if (winner !== null || isAnimating || isThinking) return;
 
     if (gameMode === 'remote') {
-      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
-      if (turn !== localPlayer) {
-        setStatusMessage('Waiting for remote opponent...');
+      if (!isMyTurn || isAwaitingServer) {
+        setStatusMessage(isAwaitingServer ? '⚡ Syncing move with opponent...' : 'Waiting for remote opponent...');
         triggerHaptic('light');
         return;
       }
@@ -510,10 +573,10 @@ export const Checkers: React.FC = () => {
         title="Checkers"
         subtitle="Classic 8x8 Draughts"
         turn={turn}
-        scoreP1={`${p1Count} Red`}
-        scoreP2={gameMode === 'vs-cpu' ? `${p2Count} 🤖 CPU` : `${p2Count} Dark`}
-        p1Label="P1 (Red)"
-        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (Dark)' : 'P2 (Dark)'}
+        scoreP1={gameMode === 'remote' ? `${p1Count} ${localPlayer === 1 ? '(You)' : ''}` : `${p1Count} Red`}
+        scoreP2={gameMode === 'remote' ? `${p2Count} ${localPlayer === 2 ? '(You)' : ''}` : gameMode === 'vs-cpu' ? `${p2Count} 🤖 CPU` : `${p2Count} Dark`}
+        p1Label={gameMode === 'remote' ? (localPlayer === 1 ? 'You (Red)' : 'Opponent (Red)') : 'P1 (Red)'}
+        p2Label={gameMode === 'remote' ? (localPlayer === 2 ? 'You (Dark)' : 'Opponent (Dark)') : gameMode === 'vs-cpu' ? '🤖 CPU (Dark)' : 'P2 (Dark)'}
         onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
         gameMode={gameMode}
@@ -525,6 +588,11 @@ export const Checkers: React.FC = () => {
         onUndo={handleUndo}
         canUndo={canUndo}
         onOpenRemoteModal={() => setShowRemoteModal(true)}
+        localPlayer={localPlayer}
+        isAwaitingServer={isAwaitingServer}
+        latency={latency}
+        turnTimeRemaining={turnTimeRemaining}
+        peerPresence={peerPresence}
       />
 
       {/* Main 8x8 Board Area - Responsive on iPhone, iPad, PC */}
@@ -533,8 +601,11 @@ export const Checkers: React.FC = () => {
           {/* Inner Hardwood Inlay Perimeter Trim */}
           <div className="w-full h-full rounded-2xl sm:rounded-3xl p-1 bg-[#180b04] border-2 border-[#8c5932]/40 shadow-inner flex items-center justify-center">
             <div className="w-full h-full rounded-xl sm:rounded-2xl grid grid-cols-8 grid-rows-8 overflow-hidden border border-black/60 shadow-[inset_0_2px_6px_rgba(0,0,0,0.7)]">
-              {board.map((row, r) =>
-                row.map((cell, c) => {
+              {Array.from({ length: 8 }).map((_, dr) =>
+                Array.from({ length: 8 }).map((_, dc) => {
+                  const r = isFlipped ? 7 - dr : dr;
+                  const c = isFlipped ? 7 - dc : dc;
+                  const cell = board[r][c];
                   const isDarkSquare = (r + c) % 2 === 1;
                   const isSelected = selectedPos && selectedPos[0] === r && selectedPos[1] === c;
                   const isMoveTarget = availableMovesForSelected.some((m) => m.toR === r && m.toC === c);

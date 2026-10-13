@@ -854,6 +854,116 @@ export const GameIcon: React.FC<GameIconProps> = ({ id, className = "w-full h-fu
         </svg>
       );
 
+    case 'battleship':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Deep Ocean Tactical Water Tile */}
+          <rect x="8" y="8" width="84" height="84" rx="16" fill="#091b2c" stroke="#1e3a5f" strokeWidth="2.5" />
+          
+          {/* Sonar Radar Grid Rings */}
+          <circle cx="50" cy="50" r="34" stroke="#0ea5e9" strokeWidth="1" strokeDasharray="3 3" opacity="0.3" />
+          <circle cx="50" cy="50" r="20" stroke="#0ea5e9" strokeWidth="1" strokeDasharray="2 2" opacity="0.4" />
+          <line x1="16" y1="50" x2="84" y2="50" stroke="#0ea5e9" strokeWidth="0.8" opacity="0.25" />
+          <line x1="50" y1="16" x2="50" y2="84" stroke="#0ea5e9" strokeWidth="0.8" opacity="0.25" />
+          
+          {/* Battleship Armored Hull */}
+          {/* Wake ripples */}
+          <path d="M18 58 Q12 62, 8 64 M18 52 Q12 48, 8 46" stroke="#38bdf8" strokeWidth="1.2" strokeLinecap="round" opacity="0.5" />
+          {/* Main Ship Body */}
+          <path d="M18 50 L30 42 L68 42 L84 50 L68 58 L30 58 Z" fill="#334155" stroke="#64748b" strokeWidth="1.8" />
+          <path d="M22 50 L32 44 L66 44 L78 50 L66 56 L32 56 Z" fill="#475569" />
+          {/* Bridge / Superstructure */}
+          <rect x="42" y="46" width="16" height="8" rx="2" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" />
+          <circle cx="50" cy="50" r="2" fill="#38bdf8" />
+          {/* Gun Turret Forward */}
+          <circle cx="34" cy="50" r="3.5" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" />
+          <line x1="34" y1="50" x2="24" y2="47" stroke="#cbd5e1" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="34" y1="50" x2="24" y2="53" stroke="#cbd5e1" strokeWidth="1.8" strokeLinecap="round" />
+          {/* Gun Turret Aft */}
+          <circle cx="68" cy="50" r="3.5" fill="#1e293b" stroke="#94a3b8" strokeWidth="1" />
+          <line x1="68" y1="50" x2="76" y2="48" stroke="#cbd5e1" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="68" y1="50" x2="76" y2="52" stroke="#cbd5e1" strokeWidth="1.8" strokeLinecap="round" />
+          
+          {/* Targeting Crosshair Reticle & Direct Hit Marker */}
+          <g transform="translate(68, 30)">
+            <circle cx="0" cy="0" r="10" stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="3 2" />
+            <line x1="-13" y1="0" x2="13" y2="0" stroke="#f43f5e" strokeWidth="1.5" />
+            <line x1="0" y1="-13" x2="0" y2="13" stroke="#f43f5e" strokeWidth="1.5" />
+            {/* Glowing Red Hit Peg */}
+            <circle cx="0" cy="0" r="4.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1.2" />
+            <circle cx="-1.5" cy="-1.5" r="1.5" fill="#ffffff" opacity="0.8" />
+          </g>
+          {/* White Splash Peg */}
+          <circle cx="30" cy="28" r="3" fill="#f8fafc" stroke="#94a3b8" strokeWidth="1" opacity="0.9" />
+          <circle cx="30" cy="28" r="6" stroke="#94a3b8" strokeWidth="0.8" opacity="0.4" />
+        </svg>
+      );
+
+    case 'cribbage':
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Wooden Board Base */}
+          <rect x="8" y="14" width="84" height="72" rx="16" fill="#451a03" stroke="#78350f" strokeWidth="2.5" />
+          <rect x="11" y="17" width="78" height="66" rx="13" fill="#58240a" opacity="0.75" />
+
+          {/* Curved Board Track Inset */}
+          <path
+            d="M 22 34 H 78 Q 86 42 78 50 H 22 Q 14 58 22 66 H 78"
+            fill="none"
+            stroke="#1c0a02"
+            strokeWidth="11"
+            strokeLinecap="round"
+            opacity="0.6"
+          />
+
+          {/* Drilled Peg Holes */}
+          {[22, 33, 44, 55, 66, 77].map((x, idx) => (
+            <React.Fragment key={`row1-${idx}`}>
+              <circle cx={x} cy="32" r="1.8" fill="#0a0502" />
+              <circle cx={x} cy="36" r="1.8" fill="#0a0502" />
+            </React.Fragment>
+          ))}
+          {[77, 66, 55, 44, 33, 22].map((x, idx) => (
+            <React.Fragment key={`row2-${idx}`}>
+              <circle cx={x} cy="48" r="1.8" fill="#0a0502" />
+              <circle cx={x} cy="52" r="1.8" fill="#0a0502" />
+            </React.Fragment>
+          ))}
+          {[22, 33, 44, 55, 66, 77].map((x, idx) => (
+            <React.Fragment key={`row3-${idx}`}>
+              <circle cx={x} cy="64" r="1.8" fill="#0a0502" />
+              <circle cx={x} cy="68" r="1.8" fill="#0a0502" />
+            </React.Fragment>
+          ))}
+
+          {/* Fanned Playing Cards in center */}
+          <g transform="translate(48, 48) rotate(-10)">
+            <rect x="-14" y="-18" width="18" height="25" rx="3" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1" />
+            <text x="-11" y="-9" fill="#e11d48" fontSize="6" fontWeight="900">5♥</text>
+            <text x="-5" y="-3" fill="#e11d48" fontSize="10">♥</text>
+          </g>
+          <g transform="translate(56, 46) rotate(14)">
+            <rect x="-12" y="-18" width="18" height="25" rx="3" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1" />
+            <text x="-9" y="-9" fill="#0f172a" fontSize="6" fontWeight="900">J♠</text>
+            <text x="-3" y="-3" fill="#0f172a" fontSize="10">♠</text>
+          </g>
+
+          {/* Polished Brass Peg (Player 1) */}
+          <g transform="translate(55, 32)">
+            <ellipse cx="1" cy="1" rx="3.2" ry="3.2" fill="#000" opacity="0.4" />
+            <circle cx="0" cy="0" r="3.2" fill="#eab308" stroke="#713f12" strokeWidth="0.8" />
+            <circle cx="-1" cy="-1" r="1" fill="#fff" opacity="0.9" />
+          </g>
+
+          {/* Stainless Steel Peg (Player 2) */}
+          <g transform="translate(44, 68)">
+            <ellipse cx="1" cy="1" rx="3.2" ry="3.2" fill="#000" opacity="0.4" />
+            <circle cx="0" cy="0" r="3.2" fill="#cbd5e1" stroke="#334155" strokeWidth="0.8" />
+            <circle cx="-1" cy="-1" r="1" fill="#fff" opacity="0.9" />
+          </g>
+        </svg>
+      );
+
     default:
       return null;
   }

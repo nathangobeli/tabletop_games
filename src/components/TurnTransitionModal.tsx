@@ -1,18 +1,25 @@
 import React from 'react';
 import type { PlayerNumber } from '../types/game';
+import type { GamePlayMode } from './GameHeader';
 import { triggerHaptic, playTapSound } from '../utils/feedback';
 
 interface TurnTransitionModalProps {
   incomingPlayer: PlayerNumber;
   gameName: string;
   onReady: () => void;
+  gameMode?: GamePlayMode;
 }
 
 export const TurnTransitionModal: React.FC<TurnTransitionModalProps> = ({
   incomingPlayer,
   gameName,
   onReady,
+  gameMode,
 }) => {
+  if (gameMode === 'remote') {
+    return null;
+  }
+
   const isP1 = incomingPlayer === 1;
 
   const handleDismiss = () => {

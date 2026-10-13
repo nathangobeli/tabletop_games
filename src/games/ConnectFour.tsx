@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader, type GamePlayMode } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
@@ -7,6 +7,7 @@ import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playBounceSound, playPlasticPlinkSound } from '../utils/feedback';
 import { requestAIMove } from '../utils/aiClient';
 import { multiplayer } from '../utils/multiplayer';
+import { useRemoteMultiplayer } from '../hooks/useRemoteMultiplayer';
 
 // 7 columns x 6 rows
 const COLS = 7;
@@ -48,6 +49,36 @@ export const ConnectFour: React.FC = () => {
   // Live Score tracking across pass-and-play matches
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
+
+  const autoDropRef = useRef<() => void>(() => {});
+
+  // Unified Remote Multiplayer Hook
+  const {
+    localPlayer,
+    opponentPlayer,
+    isMyTurn,
+    latency,
+    peerPresence,
+    turnTimeRemaining,
+    isAwaitingServer,
+    setIsAwaitingServer,
+  } = useRemoteMultiplayer({
+    gameId: 'connect-four',
+    turn: typeof turn === 'number' ? turn : 0,
+    gameMode,
+    onTurnTimeout: () => {
+      if (isMyTurn && winner === null && !isAnimating) {
+        setStatusMessage('Turn timer expired (45s)! Auto-dropping piece...');
+        autoDropRef.current();
+      }
+    },
+    onPeerForfeit: () => {
+      setWinner(localPlayer);
+      setStatusMessage('Opponent disconnected past grace period. VICTORY!');
+      playBounceSound(520);
+      triggerHaptic('success');
+    },
+  });
 
   const resetGame = useCallback((isRemote = false) => {
     setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
@@ -149,6 +180,7 @@ export const ConnectFour: React.FC = () => {
 
     // Send over WebRTC if in remote mode and triggered locally
     if (gameMode === 'remote' && !isRemote) {
+      setIsAwaitingServer(true);
       multiplayer.send({ type: 'MOVE', payload: { col: colIndex } });
     }
 
@@ -198,6 +230,7 @@ export const ConnectFour: React.FC = () => {
         setStatusMessage(`🎉 ${winTitle} connects 4 and wins!`);
         setGameStatus('finished');
         setIsAnimating(false);
+        setIsAwaitingServer(false);
 
         if (currentTurn === 1) setScoreP1((prev) => prev + 1);
         else setScoreP2((prev) => prev + 1);
@@ -210,6 +243,7 @@ export const ConnectFour: React.FC = () => {
         setStatusMessage('Board is full! It is a Draw.');
         setGameStatus('finished');
         setIsAnimating(false);
+        setIsAwaitingServer(false);
         return;
       }
 
@@ -217,23 +251,37 @@ export const ConnectFour: React.FC = () => {
       const nextPlayer: PlayerNumber = currentTurn === 1 ? 2 : 1;
       setTurn(nextPlayer);
       setIsAnimating(false);
+      setIsAwaitingServer(false);
 
       if (gameMode === 'vs-cpu' && nextPlayer === 2) {
         setStatusMessage('🤖 CPU is contemplating next drop...');
+      } else if (gameMode === 'remote') {
+        setStatusMessage(nextPlayer === localPlayer ? 'Your turn to drop a piece!' : 'Opponent is contemplating drop...');
       } else {
         setStatusMessage(`Turn: Player ${nextPlayer} (${nextPlayer === 1 ? 'Cobalt' : 'Crimson'})`);
       }
     }, fallDurationMs + 40);
-  }, [grid, turn, winner, isAnimating, lastDropPos, statusMessage, gameMode, setGameStatus]);
+  }, [grid, turn, winner, isAnimating, lastDropPos, statusMessage, gameMode, localPlayer, setGameStatus, setIsAwaitingServer]);
+
+  // Connect autoDropRef for 45s turn timer
+  useEffect(() => {
+    autoDropRef.current = () => {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[0][c] === 0) {
+          executeDrop(c, false);
+          return;
+        }
+      }
+    };
+  }, [grid, executeDrop]);
 
   const handleColumnClick = useCallback((colIndex: number) => {
     if (winner !== null || isAnimating || isThinking) return;
 
     // Remote turn check
     if (gameMode === 'remote') {
-      const localPlayer = multiplayer.isLocalHost() ? 1 : 2;
-      if (turn !== localPlayer) {
-        setStatusMessage('Waiting for remote opponent...');
+      if (!isMyTurn || isAwaitingServer) {
+        setStatusMessage(isAwaitingServer ? '⚡ Syncing drop with opponent...' : 'Waiting for remote opponent...');
         triggerHaptic('light');
         return;
       }
@@ -243,7 +291,7 @@ export const ConnectFour: React.FC = () => {
     if (gameMode === 'vs-cpu' && turn === 2) return;
 
     executeDrop(colIndex, false);
-  }, [winner, isAnimating, isThinking, gameMode, turn, executeDrop]);
+  }, [winner, isAnimating, isThinking, gameMode, isMyTurn, isAwaitingServer, executeDrop]);
 
   // Undo Handler
   const handleUndo = useCallback((isRemoteTrigger = false) => {
@@ -355,8 +403,8 @@ export const ConnectFour: React.FC = () => {
         turn={turn}
         scoreP1={scoreP1}
         scoreP2={scoreP2}
-        p1Label="P1 (Cobalt)"
-        p2Label={gameMode === 'vs-cpu' ? '🤖 CPU (Crimson)' : 'P2 (Crimson)'}
+        p1Label={gameMode === 'remote' ? (localPlayer === 1 ? 'You (Cobalt)' : 'Opponent (Cobalt)') : 'P1 (Cobalt)'}
+        p2Label={gameMode === 'remote' ? (localPlayer === 2 ? 'You (Crimson)' : 'Opponent (Crimson)') : gameMode === 'vs-cpu' ? '🤖 CPU (Crimson)' : 'P2 (Crimson)'}
         onRestart={() => resetGame(false)}
         statusMessage={statusMessage}
         gameMode={gameMode}
@@ -368,6 +416,11 @@ export const ConnectFour: React.FC = () => {
         onUndo={handleUndo}
         canUndo={canUndo}
         onOpenRemoteModal={() => setShowRemoteModal(true)}
+        localPlayer={localPlayer}
+        isAwaitingServer={isAwaitingServer}
+        latency={latency}
+        turnTimeRemaining={turnTimeRemaining}
+        peerPresence={peerPresence}
       />
 
       {/* Main Connect Four Vertical Rack */}
@@ -391,6 +444,10 @@ export const ConnectFour: React.FC = () => {
             <span className="text-xs font-black uppercase tracking-wider">
               {winner !== null
                 ? 'Game Over'
+                : gameMode === 'remote'
+                ? isMyTurn
+                  ? `Your Turn (${turnTimeRemaining}s)`
+                  : 'Opponent Thinking...'
                 : turn === 1
                 ? "Player 1's Turn (Cobalt)"
                 : gameMode === 'vs-cpu'

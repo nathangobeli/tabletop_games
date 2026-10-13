@@ -190,6 +190,20 @@ export const GAME_CATALOG: GameMetadata[] = [
     description: 'Dedicated 2-player Sanma format with Pinzu, Souzu, Honors, Pon/Kan/Ron calls, and Riichi tenpai bets.',
     accentColor: '#047857',
   },
+  {
+    id: 'battleship',
+    name: 'Battleship',
+    category: 'Naval Tactical Combat',
+    description: 'Secret 2-screen naval duel: deploy your 5 warships, hunt across enemy radar, and sink the opposing armada.',
+    accentColor: '#0284c7',
+  },
+  {
+    id: 'cribbage',
+    name: 'Cribbage',
+    category: '121-Point Classic',
+    description: 'Continuous 120-hole carved wooden board with brass & steel leapfrog pegs, discard synergy, and pegging to 31.',
+    accentColor: '#b45309',
+  },
 ];
 
 import type { TableTheme } from '../types/game';
