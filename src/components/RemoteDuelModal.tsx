@@ -99,6 +99,8 @@ export const RemoteDuelModal: React.FC<RemoteDuelModalProps> = ({ isOpen, onClos
                   ? 'bg-amber-400 ring-2 ring-amber-400/40 animate-ping'
                   : status === 'connecting'
                   ? 'bg-blue-400 animate-pulse'
+                  : status === 'error'
+                  ? 'bg-rose-500 ring-2 ring-rose-500/40'
                   : 'bg-stone-500'
               }`}
             />
@@ -109,6 +111,8 @@ export const RemoteDuelModal: React.FC<RemoteDuelModalProps> = ({ isOpen, onClos
                 ? 'Waiting for Player 2'
                 : status === 'connecting'
                 ? 'Connecting...'
+                : status === 'error'
+                ? 'Connection Error'
                 : 'Disconnected'}
             </span>
           </div>

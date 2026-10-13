@@ -5,6 +5,22 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.8] - 2026-10-12 — "Metered STUN/TURN Relay Server Integration & Mobile Remote Duel Resilience"
+
+### Added — WebRTC STUN/TURN Relay Servers (`src/utils/multiplayer.ts`)
+- **Metered Global Relay Infrastructure**:
+  - Integrated dedicated Metered STUN and TURN relay credentials into PeerJS WebRTC configuration.
+  - Traverses strict mobile carrier NAT (CGNAT) and cellular firewalls (4G/5G) so mobile devices on separate networks can reliably pair and duel.
+- **Enhanced Connection Diagnostics & Timeouts**:
+  - Added a 15-second connection handshake timeout preventing unhandled connection hangs.
+  - Friendly error reporting for room collisions, missing host rooms, and connection timeouts.
+
+### Fixed — Remote Duel Connection Status Indicator (`src/components/RemoteDuelModal.tsx`)
+- **Explicit Connection Error State**:
+  - Replaced ambiguous "Disconnected" fallback with a distinct red status badge and "Connection Error" notification when peer handshake or host lookup fails.
+
+---
+
 ## [1.8.7] - 2026-09-17 — "Blank Screen Elimination & Resilient Error Boundary Across Tabletop Games"
 
 ### Fixed — Runtime Crash & Blank Screen Elimination (`src/games/*`)

@@ -10,6 +10,33 @@ export interface RemoteMessage {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'waiting' | 'connected' | 'error';
 
+// Metered STUN & TURN Relay Server Configuration for mobile NAT traversal
+export const METERED_ICE_SERVERS: RTCIceServer[] = [
+  {
+    urls: 'stun:stun.relay.metered.ca:80',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:80',
+    username: '312037a53f5880d60e7543d6',
+    credential: 'Vl0UqXN6Jv9g15m6',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+    username: '312037a53f5880d60e7543d6',
+    credential: 'Vl0UqXN6Jv9g15m6',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:443',
+    username: '312037a53f5880d60e7543d6',
+    credential: 'Vl0UqXN6Jv9g15m6',
+  },
+  {
+    urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+    username: '312037a53f5880d60e7543d6',
+    credential: 'Vl0UqXN6Jv9g15m6',
+  },
+];
+
 class MultiplayerManager {
   private peer: Peer | null = null;
   private connection: DataConnection | null = null;
@@ -68,6 +95,9 @@ class MultiplayerManager {
       try {
         this.peer = new Peer(peerId, {
           debug: 1,
+          config: {
+            iceServers: METERED_ICE_SERVERS,
+          },
         });
 
         this.peer.on('open', () => {
@@ -79,12 +109,15 @@ class MultiplayerManager {
           this.setupConnection(conn);
         });
 
-        this.peer.on('error', (err) => {
+        this.peer.on('error', (err: any) => {
           console.error('Peer host error:', err);
           this.setStatus('error');
-          reject(err);
+          const msg = err?.type === 'unavailable-id'
+            ? 'Room code was already in use. Please try creating a room again.'
+            : (err?.message || 'Failed to initialize host room');
+          reject(new Error(msg));
         });
-      } catch (err) {
+      } catch (err: any) {
         this.setStatus('error');
         reject(err);
       }
@@ -97,14 +130,40 @@ class MultiplayerManager {
   public joinRoom(code: string): Promise<void> {
     this.disconnect();
     this.isHost = false;
-    this.roomCode = code;
+    const trimmedCode = code.trim();
+    this.roomCode = trimmedCode;
     this.setStatus('connecting');
 
-    const hostPeerId = `tabletop-${code.trim()}`;
+    const hostPeerId = `tabletop-${trimmedCode}`;
 
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+      };
+
       try {
-        this.peer = new Peer();
+        this.peer = new Peer({
+          debug: 1,
+          config: {
+            iceServers: METERED_ICE_SERVERS,
+          },
+        });
+
+        // 15-second timeout if host cannot be reached
+        timeoutHandle = setTimeout(() => {
+          if (!isResolved) {
+            isResolved = true;
+            this.setStatus('error');
+            this.disconnect();
+            reject(new Error('Connection timed out. Ensure the host is still waiting and try again.'));
+          }
+        }, 15000);
 
         this.peer.on('open', () => {
           if (!this.peer) return;
@@ -112,16 +171,38 @@ class MultiplayerManager {
           this.setupConnection(conn);
 
           conn.on('open', () => {
-            resolve();
+            if (!isResolved) {
+              isResolved = true;
+              cleanup();
+              resolve();
+            }
+          });
+
+          conn.on('error', (err: any) => {
+            console.error('Peer data connection error:', err);
+            if (!isResolved) {
+              isResolved = true;
+              cleanup();
+              this.setStatus('error');
+              reject(new Error(err?.message || 'Connection to host failed.'));
+            }
           });
         });
 
-        this.peer.on('error', (err) => {
+        this.peer.on('error', (err: any) => {
           console.error('Peer join error:', err);
-          this.setStatus('error');
-          reject(err);
+          if (!isResolved) {
+            isResolved = true;
+            cleanup();
+            this.setStatus('error');
+            const msg = err?.type === 'peer-unavailable'
+              ? `Room code ${trimmedCode} not found. Make sure the host has created the room.`
+              : (err?.message || 'Failed to connect to room');
+            reject(new Error(msg));
+          }
         });
-      } catch (err) {
+      } catch (err: any) {
+        cleanup();
         this.setStatus('error');
         reject(err);
       }
