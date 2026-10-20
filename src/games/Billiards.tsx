@@ -1110,7 +1110,7 @@ export const Billiards: React.FC = () => {
 
         {/* Tactical Controls: Right Dock in Landscape, Compact Bottom Bar in Portrait */}
         {isLandscape ? (
-          <aside className="w-32 sm:w-40 h-full flex flex-col justify-between p-2 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-xl shrink-0 gap-1.5">
+          <aside className="w-36 sm:w-44 h-full flex flex-col justify-between p-2 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-xl shrink-0 gap-1.5">
             {/* Scoreboard / Assigned Group Pills */}
             <div className="flex flex-col gap-1 bg-black/30 p-2 rounded-xl border border-white/5">
               <div className="flex items-center justify-between">
@@ -1130,10 +1130,39 @@ export const Billiards: React.FC = () => {
               </div>
             </div>
 
+            {/* Fine-Aim Micro-Adjust Buttons */}
+            <div className="flex flex-col gap-1 bg-black/25 p-1.5 rounded-xl border border-white/5">
+              <span className="text-[9px] font-black uppercase text-stone-400 text-center">Fine Aim</span>
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  disabled={isMoving || isBallInHand || isCpuTurn}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setAimAngle((a) => a - (0.5 * Math.PI) / 180);
+                  }}
+                  className="py-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-200 font-black text-[10px] active:scale-95 disabled:opacity-40 cursor-pointer"
+                >
+                  ↺ -0.5°
+                </button>
+                <button
+                  type="button"
+                  disabled={isMoving || isBallInHand || isCpuTurn}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setAimAngle((a) => a + (0.5 * Math.PI) / 180);
+                  }}
+                  className="py-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-200 font-black text-[10px] active:scale-95 disabled:opacity-40 cursor-pointer"
+                >
+                  +0.5° ↻
+                </button>
+              </div>
+            </div>
+
             {/* Power Meter Slider */}
             <div className="flex flex-col items-center gap-1 flex-1 justify-center py-1">
               <div className="flex justify-between w-full text-[10px] font-black uppercase text-accent-light/80 px-0.5">
-                <span>Power</span>
+                <span>Cue Pull</span>
                 <span>{power}%</span>
               </div>
               <input
@@ -1161,11 +1190,39 @@ export const Billiards: React.FC = () => {
             </button>
           </aside>
         ) : (
-          <div className="w-full max-w-xl shrink-0 flex items-center justify-between gap-3 px-3 py-1.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-md">
+          <div className="w-full max-w-xl shrink-0 flex items-center justify-between gap-2 px-2.5 py-1.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-md">
+            {/* Fine-Aim Micro-Adjust Buttons */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                disabled={isMoving || isBallInHand || isCpuTurn}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setAimAngle((a) => a - (0.5 * Math.PI) / 180);
+                }}
+                className="px-2 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-stone-200 font-black text-[10px] active:scale-95 disabled:opacity-40 cursor-pointer"
+                title="Fine-tune aim counter-clockwise (-0.5°)"
+              >
+                ↺ -0.5°
+              </button>
+              <button
+                type="button"
+                disabled={isMoving || isBallInHand || isCpuTurn}
+                onClick={() => {
+                  triggerHaptic('light');
+                  setAimAngle((a) => a + (0.5 * Math.PI) / 180);
+                }}
+                className="px-2 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-stone-200 font-black text-[10px] active:scale-95 disabled:opacity-40 cursor-pointer"
+                title="Fine-tune aim clockwise (+0.5°)"
+              >
+                +0.5° ↻
+              </button>
+            </div>
+
             {/* Power Meter Slider */}
-            <div className="flex-1 flex flex-col gap-0.5">
+            <div className="flex-1 flex flex-col gap-0.5 min-w-0">
               <div className="flex justify-between text-[10px] font-black uppercase text-accent-light/80">
-                <span>Strike Power</span>
+                <span>Cue Pull</span>
                 <span>{power}%</span>
               </div>
               <input
@@ -1183,13 +1240,13 @@ export const Billiards: React.FC = () => {
             <button
               onClick={handleStrike}
               disabled={isMoving || isBallInHand || winner !== null || isCpuTurn}
-              className={`px-5 py-2 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 shrink-0 ${
+              className={`px-4 py-2 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 shrink-0 ${
                 isMoving || isBallInHand || isCpuTurn
                   ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
               }`}
             >
-              {isCpuTurn ? 'CPU Shot...' : '🎱 Shoot!'}
+              {isCpuTurn ? 'CPU...' : '🎱 Shoot!'}
             </button>
           </div>
         )}

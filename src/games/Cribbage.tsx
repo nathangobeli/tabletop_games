@@ -16,6 +16,7 @@ import {
   playVictorySound,
   playTapSound,
 } from '../utils/feedback';
+import { saveMatchState, loadMatchState, clearMatchState } from '../utils/gameStats';
 import {
   type CribbageCard,
   SUIT_SYMBOLS,
@@ -688,11 +689,14 @@ export const Cribbage: React.FC = () => {
   const [isShowStepScored, setIsShowStepScored] = useState<boolean>(false);
   const [claimedShowPoints, setClaimedShowPoints] = useState<number>(0);
   const [showSelectedCardIds, setShowSelectedCardIds] = useState<string[]>([]);
+  const [claimedComboIndices, setClaimedComboIndices] = useState<number[]>([]);
   const [showCountFeedback, setShowCountFeedback] = useState<{
     type: 'exact' | 'mismatch' | 'revealed';
     message: string;
   } | null>(null);
   const [isBoardExpanded, setIsBoardExpanded] = useState<boolean>(false);
+  const [targetScore, setTargetScore] = useState<61 | 121>(121);
+  const [mugginsEnabled, setMugginsEnabled] = useState<boolean>(false);
 
   // Status & Alerts
   const [statusMessage, setStatusMessage] = useState<string>('Select 2 cards to toss into the Crib.');
@@ -724,6 +728,8 @@ export const Cribbage: React.FC = () => {
     isCycleResetting,
     winner,
     gamePlayMode,
+    targetScore,
+    mugginsEnabled,
   });
 
   useEffect(() => {
@@ -751,6 +757,8 @@ export const Cribbage: React.FC = () => {
       isCycleResetting,
       winner,
       gamePlayMode,
+      targetScore,
+      mugginsEnabled,
     };
   });
 
@@ -822,7 +830,7 @@ export const Cribbage: React.FC = () => {
   );
 
   // -------------------------------------------------------------------------
-  // Award Points & Check Immediate 121-Point Walk-Off Win
+  // Award Points & Check Immediate Target-Score Walk-Off Win (121 or 61 pts)
   // -------------------------------------------------------------------------
   const addPoints = useCallback(
     (player: PlayerNumber, pts: number, reason = ''): boolean => {
@@ -836,6 +844,8 @@ export const Cribbage: React.FC = () => {
         scheduleTimeout(() => setPeggingCallout(null), 2400);
       }
 
+      const goal = stateRef.current.targetScore;
+
       if (player === 1) {
         const prev = stateRef.current.scoreP1;
         const next = prev + pts;
@@ -843,7 +853,7 @@ export const Cribbage: React.FC = () => {
         stateRef.current.scoreP1 = next;
         setPrevScoreP1(prev);
         setScoreP1(next);
-        if (next >= 121) {
+        if (next >= goal) {
           stateRef.current.winner = 1;
           setWinner(1);
           playVictorySound();
@@ -856,7 +866,7 @@ export const Cribbage: React.FC = () => {
         stateRef.current.scoreP2 = next;
         setPrevScoreP2(prev);
         setScoreP2(next);
-        if (next >= 121) {
+        if (next >= goal) {
           stateRef.current.winner = 2;
           setWinner(2);
           playVictorySound();
@@ -911,6 +921,7 @@ export const Cribbage: React.FC = () => {
       setIsShowStepScored(false);
       setClaimedShowPoints(0);
       setShowSelectedCardIds([]);
+      setClaimedComboIndices([]);
       setShowCountFeedback(null);
       setPeggingCallout(null);
 
@@ -945,6 +956,7 @@ export const Cribbage: React.FC = () => {
   const resetGame = useCallback(
     (explicitMode?: GamePlayMode) => {
       clearAllTimers();
+      clearMatchState('cribbage');
       stateRef.current.scoreP1 = 0;
       stateRef.current.prevScoreP1 = 0;
       stateRef.current.scoreP2 = 0;
@@ -961,14 +973,116 @@ export const Cribbage: React.FC = () => {
     [clearAllTimers, setGameStatus, startNewRound]
   );
 
-  // Run initial deal ONLY once on mount
+  // Run initial deal or restore saved match ONLY once on mount
   const didMountRef = useRef(false);
   useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
-      resetGame();
+      const saved = loadMatchState<{
+        scoreP1: number;
+        scoreP2: number;
+        prevScoreP1: number;
+        prevScoreP2: number;
+        dealer: PlayerNumber;
+        turn: PlayerNumber;
+        phase: CribbagePhase;
+        handP1: CribbageCard[];
+        handP2: CribbageCard[];
+        crib: CribbageCard[];
+        starterCut: CribbageCard | null;
+        p1DiscardReady: boolean;
+        p2DiscardReady: boolean;
+        peggingHandP1: CribbageCard[];
+        peggingHandP2: CribbageCard[];
+        currentRunningCount: number;
+        activeCycleSequence: CribbageCard[];
+        peggingHistory: { card: CribbageCard; player: PlayerNumber; count: number }[];
+        targetScore?: 61 | 121;
+        mugginsEnabled?: boolean;
+      }>('cribbage');
+
+      if (saved && saved.handP1 && saved.handP1.length > 0 && saved.phase !== 'round_complete') {
+        stateRef.current.scoreP1 = saved.scoreP1;
+        stateRef.current.scoreP2 = saved.scoreP2;
+        stateRef.current.prevScoreP1 = saved.prevScoreP1;
+        stateRef.current.prevScoreP2 = saved.prevScoreP2;
+        setScoreP1(saved.scoreP1);
+        setScoreP2(saved.scoreP2);
+        setPrevScoreP1(saved.prevScoreP1);
+        setPrevScoreP2(saved.prevScoreP2);
+        setDealer(saved.dealer);
+        setTurn(saved.turn);
+        setPhase(saved.phase === 'cut_reveal' ? 'pegging' : saved.phase);
+        setHandP1(saved.handP1);
+        setHandP2(saved.handP2);
+        setCrib(saved.crib);
+        setStarterCut(saved.starterCut);
+        setP1DiscardReady(saved.p1DiscardReady);
+        setP2DiscardReady(saved.p2DiscardReady);
+        setPeggingHandP1(saved.peggingHandP1);
+        setPeggingHandP2(saved.peggingHandP2);
+        setCurrentRunningCount(saved.currentRunningCount);
+        setActiveCycleSequence(saved.activeCycleSequence);
+        setPeggingHistory(saved.peggingHistory || []);
+        if (saved.targetScore) setTargetScore(saved.targetScore);
+        if (saved.mugginsEnabled !== undefined) setMugginsEnabled(saved.mugginsEnabled);
+        setStatusMessage('Resumed saved Cribbage match!');
+      } else {
+        resetGame();
+      }
     }
   }, [resetGame]);
+
+  // Auto-save active match state on changes
+  useEffect(() => {
+    if (!didMountRef.current || gamePlayMode === 'remote' || winner !== null) return;
+    if (scoreP1 === 0 && scoreP2 === 0 && phase === 'discarding' && !p1DiscardReady) return;
+    saveMatchState('cribbage', {
+      scoreP1,
+      scoreP2,
+      prevScoreP1,
+      prevScoreP2,
+      dealer,
+      turn,
+      phase,
+      handP1,
+      handP2,
+      crib,
+      starterCut,
+      p1DiscardReady,
+      p2DiscardReady,
+      peggingHandP1,
+      peggingHandP2,
+      currentRunningCount,
+      activeCycleSequence,
+      peggingHistory,
+      targetScore,
+      mugginsEnabled,
+    });
+  }, [
+    scoreP1,
+    scoreP2,
+    prevScoreP1,
+    prevScoreP2,
+    dealer,
+    turn,
+    phase,
+    handP1,
+    handP2,
+    crib,
+    starterCut,
+    p1DiscardReady,
+    p2DiscardReady,
+    peggingHandP1,
+    peggingHandP2,
+    currentRunningCount,
+    activeCycleSequence,
+    peggingHistory,
+    targetScore,
+    mugginsEnabled,
+    gamePlayMode,
+    winner,
+  ]);
 
   // -------------------------------------------------------------------------
   // Starter Cut Reveal & His Heels Check
@@ -1194,6 +1308,7 @@ export const Cribbage: React.FC = () => {
       });
       setClaimedShowPoints(0);
       setShowSelectedCardIds([]);
+      setClaimedComboIndices([]);
 
       if (isCpuOwner) {
         // CPU automatically scores and pegs its own Hand / Crib
@@ -1247,6 +1362,36 @@ export const Cribbage: React.FC = () => {
     }
   }, [configureShowStep, getPlayerLabel, localPlayer]);
 
+  // Tap-to-Claim Selected Card Combination Checklist Handler
+  const handleClaimSelectedCombo = () => {
+    if (!activeShowScore || isShowStepScored || showSelectedCardIds.length === 0) return;
+
+    const matchIdx = activeShowScore.score.items.findIndex((item, idx) => {
+      if (claimedComboIndices.includes(idx)) return false;
+      if (item.cards.length !== showSelectedCardIds.length) return false;
+      return item.cards.every((c) => showSelectedCardIds.includes(c.id));
+    });
+
+    if (matchIdx !== -1) {
+      const matched = activeShowScore.score.items[matchIdx];
+      playTapSound();
+      triggerHaptic('medium');
+      setClaimedComboIndices((prev) => [...prev, matchIdx]);
+      setClaimedShowPoints((prev) => prev + matched.points);
+      setShowSelectedCardIds([]);
+      setShowCountFeedback({
+        type: 'exact',
+        message: `✅ Claimed ${matched.description} (+${matched.points} pts)!`,
+      });
+    } else {
+      triggerHaptic('heavy');
+      setShowCountFeedback({
+        type: 'mismatch',
+        message: 'Selected cards do not form a new unclaimed 15, Pair, Run, Flush, or His Nobs.',
+      });
+    }
+  };
+
   // Human Player Submits Their Claimed Hand/Crib Score
   const handleSubmitHumanShowScore = () => {
     if (!activeShowScore || isShowStepScored) return;
@@ -1278,6 +1423,28 @@ export const Cribbage: React.FC = () => {
             points: actualTotal,
           },
         });
+      }
+    } else if (mugginsEnabled && claimedShowPoints < actualTotal) {
+      // MUGGINS RULE ACTIVE: Opponent steals the missed points!
+      const missed = actualTotal - claimedShowPoints;
+      const opp: PlayerNumber = activeShowScore.player === 1 ? 2 : 1;
+      const oppLabel = getPlayerLabel(opp);
+      triggerHaptic('heavy');
+      setIsShowStepScored(true);
+      setShowCountFeedback({
+        type: 'mismatch',
+        message: `🚨 MUGGINS! You pegged +${claimedShowPoints} pts, and ${oppLabel} stole the ${missed} missed ${
+          missed === 1 ? 'point' : 'points'
+        }!`,
+      });
+      setStatusMessage(`🚨 Muggins! ${ownerLabel} pegged +${claimedShowPoints}, ${oppLabel} stole +${missed}!`);
+      const won = addPoints(
+        activeShowScore.player,
+        claimedShowPoints,
+        `${ownerLabel}: +${claimedShowPoints} pts`
+      );
+      if (!won) {
+        addPoints(opp, missed, `🚨 Muggins! +${missed} to ${oppLabel}`);
       }
     } else {
       triggerHaptic('heavy');
@@ -1982,7 +2149,7 @@ export const Cribbage: React.FC = () => {
     <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
         gameId="cribbage"
-        gameName="Cribbage (121-Point Match)"
+        gameName={`Cribbage (${targetScore}-Point Match)`}
         turn={turn}
         scoreP1={scoreP1}
         scoreP2={scoreP2}
@@ -2019,11 +2186,11 @@ export const Cribbage: React.FC = () => {
           />
 
           {/* Real-time Peg Score & Controls Bar */}
-          <div className="w-full flex items-center justify-between px-2.5 py-1 bg-black/70 border border-[#3e444c] rounded-xl sm:rounded-2xl shadow-md text-xs font-black mt-1 gap-1.5">
+          <div className="w-full flex flex-wrap items-center justify-between px-2.5 py-1 bg-black/70 border border-[#3e444c] rounded-xl sm:rounded-2xl shadow-md text-xs font-black mt-1 gap-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 shadow-sm shrink-0" />
               <span className="text-amber-400 truncate">
-                {gamePlayMode === 'remote' && localPlayer === 1 ? 'You (Brass)' : 'P1 (Brass)'}: {scoreP1}/121
+                {gamePlayMode === 'remote' && localPlayer === 1 ? 'You (Brass)' : 'P1 (Brass)'}: {scoreP1}/{targetScore}
               </span>
               {dealer === 1 && (
                 <span className="text-[9px] bg-amber-500 text-stone-950 px-1.5 py-0.5 rounded font-black uppercase shadow-xs shrink-0">
@@ -2032,14 +2199,50 @@ export const Cribbage: React.FC = () => {
               )}
             </div>
 
-            {/* Central Callout Banner + Board Size & Rules Controls */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            {/* Central Callout Banner + Board Size, Target Score, Muggins & Rules Controls */}
+            <div className="flex items-center gap-1 flex-wrap justify-center shrink-0">
               {peggingCallout ? (
-                <div className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 text-[10px] sm:text-[11px] font-black uppercase tracking-wider animate-bounce shadow-lg truncate max-w-[180px] sm:max-w-xs">
+                <div className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 text-[10px] sm:text-[11px] font-black uppercase tracking-wider animate-bounce shadow-lg truncate max-w-[200px] sm:max-w-xs">
                   ✨ {peggingCallout}
                 </div>
               ) : (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextGoal: 61 | 121 = targetScore === 121 ? 61 : 121;
+                      setTargetScore(nextGoal);
+                      stateRef.current.targetScore = nextGoal;
+                      triggerHaptic('light');
+                    }}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer shrink-0 ${
+                      targetScore === 61
+                        ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50'
+                        : 'bg-white/10 hover:bg-amber-500/20 text-stone-200 border-white/15'
+                    }`}
+                    title="Switch between Full 121-Point Match and Express 61-Point Half-Board Match"
+                  >
+                    <span>{targetScore === 61 ? '⚡ 61 Pts' : '🏁 121 Pts'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMugginsEnabled((prev) => {
+                        const next = !prev;
+                        stateRef.current.mugginsEnabled = next;
+                        return next;
+                      });
+                      triggerHaptic('light');
+                    }}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer shrink-0 ${
+                      mugginsEnabled
+                        ? 'bg-rose-500/25 text-rose-300 border-rose-400/50'
+                        : 'bg-white/10 hover:bg-rose-500/20 text-stone-300 border-white/15'
+                    }`}
+                    title="Muggins Rule: When ON, opponent steals any points you miss when counting your hand!"
+                  >
+                    <span>{mugginsEnabled ? '⚡ Muggins: ON' : '🛡️ Muggins: OFF'}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setIsBoardExpanded((prev) => !prev)}
@@ -2051,7 +2254,7 @@ export const Cribbage: React.FC = () => {
                     title="Toggle Board Zoom Size"
                   >
                     <span>🔍</span>
-                    <span>{isBoardExpanded ? 'Standard Board' : 'Larger Board'}</span>
+                    <span className="hidden sm:inline">{isBoardExpanded ? 'Standard' : 'Zoom Board'}</span>
                   </button>
                   <button
                     type="button"
@@ -2078,7 +2281,7 @@ export const Cribbage: React.FC = () => {
                   : gamePlayMode === 'remote' && localPlayer === 2
                   ? 'You (Steel)'
                   : 'P2 (Steel)'}
-                : {scoreP2}/121
+                : {scoreP2}/{targetScore}
               </span>
               <span className="w-3 h-3 rounded-full bg-slate-300 border border-slate-500 shadow-sm shrink-0" />
             </div>
@@ -2250,7 +2453,7 @@ export const Cribbage: React.FC = () => {
                     Hand &amp; Crib Counting Complete
                   </span>
                   <span className="text-xs text-stone-300">
-                    Score: P1 {scoreP1} pts — {getPlayerLabel(2)} {scoreP2} pts
+                    Score: P1 {scoreP1} pts — {getPlayerLabel(2)} {scoreP2} pts (Goal: {targetScore})
                   </span>
                   <button
                     type="button"
@@ -2377,7 +2580,7 @@ export const Cribbage: React.FC = () => {
                   🏆 {activeShowScore.title}
                 </h2>
 
-                {/* 4 Hand Cards + 1 Starter Cut Card (Tappable to inspect sums!) */}
+                {/* 4 Hand Cards + 1 Starter Cut Card (Tappable to inspect sums & claim combos!) */}
                 <div className="flex items-center justify-center gap-1.5 my-1 bg-black/45 px-2.5 py-2 rounded-2xl border border-white/10">
                   {activeShowScore.hand.map((c) => (
                     <ProceduralCribbageCard
@@ -2401,13 +2604,38 @@ export const Cribbage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Live Sum Helper when tapping cards */}
+                {/* Live Sum Helper & Tap-to-Claim Combo Button when selecting cards */}
                 {!isShowStepScored && showSelectedCardIds.length > 0 && (
-                  <div className="text-[10px] font-bold text-amber-300 mb-1">
-                    Selected Cards Sum:{' '}
-                    <span className={showSelectedSum === 15 ? 'text-emerald-400 font-black' : 'text-white'}>
-                      {showSelectedSum} {showSelectedSum === 15 ? '✨ (Fifteen for +2!)' : ''}
+                  <div className="flex items-center justify-center gap-2 mb-1 flex-wrap">
+                    <span className="text-[10px] font-bold text-amber-300">
+                      Selected Sum:{' '}
+                      <span className={showSelectedSum === 15 ? 'text-emerald-400 font-black' : 'text-white'}>
+                        {showSelectedSum} {showSelectedSum === 15 ? '✨ (15!)' : ''}
+                      </span>
                     </span>
+                    <button
+                      type="button"
+                      onClick={handleClaimSelectedCombo}
+                      className="px-2.5 py-0.5 rounded-full bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/60 text-emerald-200 text-[10px] font-black uppercase tracking-wide active:scale-95 transition-all cursor-pointer shadow-sm"
+                    >
+                      ➕ Claim Selected Combo
+                    </button>
+                  </div>
+                )}
+
+                {/* Claimed Combos Checklist */}
+                {!isShowStepScored && claimedComboIndices.length > 0 && (
+                  <div className="w-full bg-emerald-950/35 border border-emerald-500/30 rounded-xl px-2.5 py-1 mb-1 max-h-16 overflow-y-auto flex flex-col gap-0.5 text-[10px]">
+                    {claimedComboIndices.map((idx) => {
+                      const item = activeShowScore.score.items[idx];
+                      if (!item) return null;
+                      return (
+                        <div key={idx} className="flex items-center justify-between text-emerald-200">
+                          <span className="truncate">✓ {item.description}</span>
+                          <span className="font-black text-emerald-400 shrink-0">+{item.points}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -2529,7 +2757,11 @@ export const Cribbage: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setClaimedShowPoints(0)}
+                          onClick={() => {
+                            setClaimedShowPoints(0);
+                            setClaimedComboIndices([]);
+                            setShowSelectedCardIds([]);
+                          }}
                           className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-[10px] uppercase active:scale-95 cursor-pointer"
                         >
                           Reset
@@ -2586,7 +2818,7 @@ export const Cribbage: React.FC = () => {
                       className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer mt-1"
                     >
                       {winner !== null
-                        ? `🏆 121+ Reached! View Match Victory ➜`
+                        ? `🏆 ${targetScore}+ Reached! View Match Victory ➜`
                         : phase === 'show_non_dealer'
                         ? `Count Dealer's Hand (${getPlayerLabel(dealer)}) ➜`
                         : phase === 'show_dealer'

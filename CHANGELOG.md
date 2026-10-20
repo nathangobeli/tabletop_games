@@ -5,6 +5,36 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-19 — "Cribbage Muggins & 61-Pt Express Mode, Fine-Aim Touch Controls, Career Stats & Streaks, Mid-Match Auto-Save & Offline PWA"
+
+### Added & Enhanced — Cribbage Features (`src/games/Cribbage.tsx`)
+- **Optional "Muggins" Rule Toggle (`⚡ Muggins: ON` / `🛡️ Muggins: OFF`)**:
+  - When enabled in the Cribbage Peg Bar, if a human player undercounts their Hand or Crib during *The Show*, the opponent (or `🤖 CPU`) immediately calls **"Muggins!"** and steals the missed points onto their own peg track.
+- **Tap-to-Claim Specific Card Combinations (`➕ Claim Selected Combo`)**:
+  - Players can now tap specific cards in their Hand + Starter Cut during *The Show* (e.g., `7 + 8` for a Fifteen, a Pair, or a 3-card Run) and tap **`➕ Claim Selected Combo`** to verify and check off that exact combination into a live claimed checklist.
+- **61-Point "Half-Board / Express Match" Toggle (`⚡ 61 Pts` / `🏁 121 Pts`)**:
+  - Added a one-tap match length toggle in the Cribbage Peg Bar to switch between a classic `121`-point game and a quick 5-minute `61`-point single-lap express match.
+
+### Added — Precision Mobile Touch Controls (`src/games/Billiards.tsx`, `src/games/Carrom.tsx`, `src/games/ToyTennis.tsx`)
+- **Fine-Aim (`↺ -0.5°` / `+0.5° ↻`) Micro-Adjust & Cue Pull Power Controls**:
+  - Added dedicated **`↺ -0.5°`** and **`+0.5° ↻`** micro-adjustment buttons next to the Cue Pull / Flick Power slider and Shoot/Flick button in both **Billiards (8-Ball)** and **Carrom**, eliminating finger-lift aim drift on long-table shots.
+  - Added persistent aiming trajectory visualization and direct tap-to-point aiming in **Carrom** alongside classic drag-and-release flicking.
+- **Mobile Rotation Guard in Toy Tennis (`src/games/ToyTennis.tsx`)**:
+  - Added a `ResizeObserver` with zero-dimension frame guards so rotating a mobile device never causes the court canvas to collapse.
+
+### Added — Career Win/Streak Progression, `🎰 Surprise Me` & Mid-Match Auto-Save (`src/utils/gameStats.ts`, `src/components/MainMenu.tsx`, `src/components/GameOverModal.tsx`)
+- **Per-Game Career Stats & Win Streaks (`src/utils/gameStats.ts`)**:
+  - Automatically tracks Player 1 Wins, Losses, Ties, Current Win Streak (`🔥`), and Best Streak across all 28 games in `localStorage`, displaying Trophy/Streak badges directly on Main Menu game cards, total career wins in the header, and career records inside `GameOverModal`.
+- **`🎰 Surprise Me` Random Game Launcher**:
+  - Added a one-tap **`🎰 Surprise Me`** pill in the Main Menu filter bar that launches a random game from the active category/mode filter.
+- **Mid-Match Auto-Save & Resume (`Cribbage`, `Backgammon`, `Yacht Dice`)**:
+  - Automatically saves active match state after every turn/round in `localStorage` and displays a pulsing **`💾 Resume Match`** badge on the Main Menu card so interrupted mobile sessions resume seamlessly.
+
+### Added — Full Offline PWA Support (`public/sw.js`, `public/site.webmanifest`, `src/main.tsx`)
+- Added an offline-capable Service Worker (`public/sw.js`) with network-first navigation and stale-while-revalidate static asset caching, and updated `public/site.webmanifest` to `"orientation": "any"` so installed home-screen PWAs support both Portrait and Landscape play.
+
+---
+
 ## [2.2.2] - 2026-10-19 — "Cribbage Board Visual Overhaul & Interactive Player Hand/Crib Scoring"
 
 ### Enhanced — Cribbage Board Visuals & Interactive Player Scoring (`src/games/Cribbage.tsx`)

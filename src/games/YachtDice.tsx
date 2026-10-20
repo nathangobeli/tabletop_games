@@ -5,6 +5,7 @@ import { GameOverModal } from '../components/GameOverModal';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playTapSound, playCaptureSound } from '../utils/feedback';
 import { getYachtDiceAIMove } from '../utils/gameAi';
+import { saveMatchState, loadMatchState, clearMatchState } from '../utils/gameStats';
 
 export interface Die {
   value: number; // 1-6
@@ -158,22 +159,39 @@ export const computeTotals = (card: Scorecard) => {
   return { upperSum, upperBonus, lowerSum, total };
 };
 
-const createInitialYachtState = (): YachtState => ({
-  phase: 'INITIAL_ROLL',
-  turn: 1,
-  rollsRemaining: 3,
-  dice: [
-    { value: 1, held: false },
-    { value: 2, held: false },
-    { value: 3, held: false },
-    { value: 4, held: false },
-    { value: 5, held: false },
-  ],
-  scorecardP1: {},
-  scorecardP2: {},
-  winner: null,
-  statusMessage: 'Player 1: Roll the dice to start turn (3 rolls left)',
-});
+const createInitialYachtState = (ignoreSaved = false): YachtState => {
+  if (!ignoreSaved) {
+    const saved = loadMatchState<YachtState>('yacht-dice');
+    if (saved && saved.winner === null && saved.phase !== 'GAME_OVER') {
+      const safePhase: YachtPhase =
+        saved.phase === 'ROLLING'
+          ? 'DECIDING'
+          : saved.phase === 'TURN_TRANSITION'
+          ? 'INITIAL_ROLL'
+          : saved.phase;
+      return {
+        ...saved,
+        phase: safePhase,
+      };
+    }
+  }
+  return {
+    phase: 'INITIAL_ROLL',
+    turn: 1,
+    rollsRemaining: 3,
+    dice: [
+      { value: 1, held: false },
+      { value: 2, held: false },
+      { value: 3, held: false },
+      { value: 4, held: false },
+      { value: 5, held: false },
+    ],
+    scorecardP1: {},
+    scorecardP2: {},
+    winner: null,
+    statusMessage: 'Player 1: Roll the dice to start turn (3 rolls left)',
+  };
+};
 
 const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
   switch (action.type) {
@@ -299,7 +317,8 @@ const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
     }
 
     case 'RESTART_GAME':
-      return createInitialYachtState();
+      clearMatchState('yacht-dice');
+      return createInitialYachtState(true);
 
     default:
       return state;
@@ -308,18 +327,26 @@ const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
 
 export const YachtDice: React.FC = () => {
   const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
-  const [state, dispatch] = useReducer(yachtReducer, undefined, createInitialYachtState);
+  const [state, dispatch] = useReducer(yachtReducer, undefined, () => createInitialYachtState(false));
 
   const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync game status with context
+  // Sync game status with context & auto-save mid-match progress
   useEffect(() => {
-    if (state.phase === 'GAME_OVER') {
+    if (state.phase === 'GAME_OVER' || state.winner !== null) {
       setGameStatus('finished');
+      clearMatchState('yacht-dice');
     } else {
       setGameStatus('active');
+      const hasProgress =
+        Object.keys(state.scorecardP1).length > 0 ||
+        Object.keys(state.scorecardP2).length > 0 ||
+        state.rollsRemaining < 3;
+      if (hasProgress && state.phase !== 'ROLLING') {
+        saveMatchState<YachtState>('yacht-dice', state);
+      }
     }
-  }, [state.phase, setGameStatus]);
+  }, [state, setGameStatus]);
 
   // Turn transition timer
   useEffect(() => {

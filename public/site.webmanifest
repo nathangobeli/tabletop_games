@@ -4,7 +4,7 @@
   "description": "26 Classic 2-Player Local Tabletop Games in polished Clubhouse style",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#18140f",
   "theme_color": "#18140f",
   "icons": [

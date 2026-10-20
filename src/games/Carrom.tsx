@@ -35,7 +35,9 @@ export const Carrom: React.FC = () => {
   const [scoreP1, setScoreP1] = useState<number>(0);
   const [scoreP2, setScoreP2] = useState<number>(0);
   const [winner, setWinner] = useState<PlayerNumber | 'draw' | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Position striker on baseline, drag back to aim!');
+  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Position striker on baseline, drag or use Fine-Aim!');
+  const [aimAngle, setAimAngle] = useState<number>(-Math.PI / 2);
+  const [shotPower, setShotPower] = useState<number>(65);
 
   // Aiming and shot state
   const stateRef = useRef<{
@@ -48,6 +50,8 @@ export const Carrom: React.FC = () => {
     striker: Piece;
     isAiming: boolean;
     isMoving: boolean;
+    aimAngle: number;
+    shotPower: number;
     dragStart: { x: number; y: number } | null;
     dragCurrent: { x: number; y: number } | null;
     baselineY: number;
@@ -73,6 +77,8 @@ export const Carrom: React.FC = () => {
     },
     isAiming: false,
     isMoving: false,
+    aimAngle: -Math.PI / 2,
+    shotPower: 65,
     dragStart: null,
     dragCurrent: null,
     baselineY: BOARD_SIZE - 45,
@@ -141,6 +147,7 @@ export const Carrom: React.FC = () => {
   const positionStrikerForTurn = useCallback((player: PlayerNumber) => {
     const s = stateRef.current;
     const baselineY = player === 1 ? s.height - 45 : 45;
+    const defaultAngle = player === 1 ? -Math.PI / 2 : Math.PI / 2;
     s.baselineY = baselineY;
     s.striker.x = s.width / 2;
     s.striker.y = baselineY;
@@ -149,6 +156,8 @@ export const Carrom: React.FC = () => {
     s.striker.pocketsSunk = false;
     s.isMoving = false;
     s.isAiming = false;
+    s.aimAngle = defaultAngle;
+    setAimAngle(defaultAngle);
     s.dragStart = null;
     s.dragCurrent = null;
   }, []);
@@ -577,31 +586,40 @@ export const Carrom: React.FC = () => {
         ctx.stroke();
       }
 
-      // 7. Aim Trajectory & Impulse Vector
-      if (s.isAiming && s.dragStart && s.dragCurrent && !s.isMoving) {
-        const pullDx = s.dragStart.x - s.dragCurrent.x;
-        const pullDy = s.dragStart.y - s.dragCurrent.y;
-        const pullDist = Math.hypot(pullDx, pullDy);
-        const powerRatio = Math.min(1, pullDist / 80);
+      // 7. Aim Trajectory & Impulse Vector (Always visible when stationary so Fine-Aim works seamlessly)
+      if (!s.isMoving && !stk.pocketsSunk) {
+        let currentAngle = s.aimAngle;
+        let powerRatio = s.shotPower / 100;
+
+        if (s.isAiming && s.dragStart && s.dragCurrent) {
+          const pullDx = s.dragStart.x - s.dragCurrent.x;
+          const pullDy = s.dragStart.y - s.dragCurrent.y;
+          const pullDist = Math.hypot(pullDx, pullDy);
+          if (pullDist > 6) {
+            currentAngle = Math.atan2(pullDy, pullDx);
+            powerRatio = Math.max(0.15, Math.min(1, pullDist / 80));
+            s.aimAngle = currentAngle;
+            s.shotPower = Math.round(powerRatio * 100);
+          }
+        }
 
         // Projected firing line
-        const aimAngle = Math.atan2(pullDy, pullDx);
-        const aimLen = powerRatio * 110;
+        const aimLen = Math.max(35, powerRatio * 115);
 
         ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.8;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
         ctx.moveTo(stk.x, stk.y);
-        ctx.lineTo(stk.x + Math.cos(aimAngle) * aimLen, stk.y + Math.sin(aimAngle) * aimLen);
+        ctx.lineTo(stk.x + Math.cos(currentAngle) * aimLen, stk.y + Math.sin(currentAngle) * aimLen);
         ctx.stroke();
         ctx.setLineDash([]);
 
         // Power arc gauge
         ctx.beginPath();
-        ctx.arc(stk.x, stk.y, stk.radius + 8, aimAngle - 0.6, aimAngle + 0.6);
+        ctx.arc(stk.x, stk.y, stk.radius + 7, currentAngle - 0.55, currentAngle + 0.55);
         ctx.strokeStyle = powerRatio > 0.7 ? '#ef4444' : '#fbbf24';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3.5;
         ctx.stroke();
       }
     };
@@ -619,6 +637,22 @@ export const Carrom: React.FC = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, [setupBoardPieces, positionStrikerForTurn, handleShotComplete]);
+
+  // Launch striker using locked aimAngle & shotPower
+  const handleFlickShot = () => {
+    const s = stateRef.current;
+    if (s.isMoving || winner !== null) return;
+    const maxForce = 22;
+    const forceRatio = Math.max(0.15, Math.min(1, s.shotPower / 100));
+    s.striker.vx = Math.cos(s.aimAngle) * maxForce * forceRatio;
+    s.striker.vy = Math.sin(s.aimAngle) * maxForce * forceRatio;
+    s.isMoving = true;
+    s.isAiming = false;
+    s.dragStart = null;
+    s.dragCurrent = null;
+    playTapSound();
+    triggerHaptic('medium');
+  };
 
   // Pointer handlers for baseline placement & flick impulse
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -648,6 +682,12 @@ export const Carrom: React.FC = () => {
       s.isAiming = true;
       s.dragStart = { x: s.striker.x, y: s.striker.y };
       s.dragCurrent = { x, y };
+      triggerHaptic('light');
+    } else {
+      // Tap anywhere on the board to point aim directly toward that spot without releasing a shot!
+      const directAngle = Math.atan2(y - s.striker.y, x - s.striker.x);
+      s.aimAngle = directAngle;
+      setAimAngle(directAngle);
       triggerHaptic('light');
     }
   };
@@ -695,11 +735,16 @@ export const Carrom: React.FC = () => {
     s.dragStart = null;
     s.dragCurrent = null;
 
-    if (pullDist > 10) {
+    if (pullDist > 12) {
       // Launch impulse force
       const maxForce = 22;
       const forceRatio = Math.min(1, pullDist / 80);
       const angle = Math.atan2(pullDy, pullDx);
+
+      s.aimAngle = angle;
+      setAimAngle(angle);
+      s.shotPower = Math.round(forceRatio * 100);
+      setShotPower(s.shotPower);
 
       s.striker.vx = Math.cos(angle) * maxForce * forceRatio;
       s.striker.vy = Math.sin(angle) * maxForce * forceRatio;
@@ -725,8 +770,8 @@ export const Carrom: React.FC = () => {
       />
 
       {/* Main Square Board Container - Responsive on iPhone, iPad, PC */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 relative touch-none overflow-hidden">
-        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl aspect-square max-h-[72vh] bg-[#784d1e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 shadow-2xl border-4 sm:border-6 border-[#4d2f14] flex items-center justify-center relative">
+      <main className="flex-1 min-h-0 flex flex-col items-center justify-center p-1.5 sm:p-3 relative touch-none overflow-hidden">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg aspect-square max-h-[68vh] bg-[#784d1e] rounded-3xl sm:rounded-[36px] p-2 sm:p-3.5 shadow-2xl border-4 sm:border-6 border-[#4d2f14] flex items-center justify-center relative">
           <canvas
             ref={canvasRef}
             onPointerDown={handlePointerDown}
@@ -739,12 +784,64 @@ export const Carrom: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer Instructions */}
-      <footer className="pb-safe px-4 py-1.5 border-t border-[#2a2e33]/10 bg-[#f3e9dc]/80 backdrop-blur-sm flex items-center justify-between text-xs font-semibold text-[#7d6753]">
-        <span>Tap baseline to position, drag back to shoot</span>
-        <span className="text-[11px] bg-accent-light px-2.5 py-0.5 rounded-full border border-[#d8c3a5]/50">
-          White: 10p • Queen: 30p
-        </span>
+      {/* Mobile Tactical Controls: Fine-Aim (-0.5° / +0.5°), Power Slider & Flick Button */}
+      <footer className="pb-safe px-3 py-1.5 border-t border-[#2a2e33]/10 bg-container-dark/95 backdrop-blur-sm flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              const next = aimAngle - (0.5 * Math.PI) / 180;
+              stateRef.current.aimAngle = next;
+              setAimAngle(next);
+            }}
+            className="px-2 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-stone-200 font-black text-[10px] active:scale-95 cursor-pointer"
+            title="Fine-tune aim counter-clockwise (-0.5°)"
+          >
+            ↺ -0.5°
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              const next = aimAngle + (0.5 * Math.PI) / 180;
+              stateRef.current.aimAngle = next;
+              setAimAngle(next);
+            }}
+            className="px-2 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-stone-200 font-black text-[10px] active:scale-95 cursor-pointer"
+            title="Fine-tune aim clockwise (+0.5°)"
+          >
+            +0.5° ↻
+          </button>
+        </div>
+
+        <div className="flex-1 flex flex-col gap-0.5 min-w-0 max-w-xs">
+          <div className="flex justify-between text-[10px] font-black uppercase text-accent-light/80">
+            <span>Flick Power</span>
+            <span>{shotPower}%</span>
+          </div>
+          <input
+            type="range"
+            min="15"
+            max="100"
+            value={shotPower}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              stateRef.current.shotPower = val;
+              setShotPower(val);
+            }}
+            className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleFlickShot}
+          disabled={winner !== null}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all cursor-pointer shrink-0 border border-amber-300"
+        >
+          🎯 Flick!
+        </button>
       </footer>
 
       {/* Victory Game Over Modal */}

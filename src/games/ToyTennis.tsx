@@ -149,6 +149,7 @@ export const ToyTennis: React.FC = () => {
     const handleResize = () => {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
@@ -178,6 +179,8 @@ export const ToyTennis: React.FC = () => {
     };
 
     handleResize();
+    const resizeObserver = new ResizeObserver(() => handleResize());
+    resizeObserver.observe(canvas);
     window.addEventListener('resize', handleResize);
 
     const awardPoint = (recipient: PlayerNumber, reason: string) => {
@@ -535,6 +538,7 @@ export const ToyTennis: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(animId);
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
     };
   }, [serveBall, setGameStatus]);

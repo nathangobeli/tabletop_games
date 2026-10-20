@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameIcon } from './GameIcon';
 import { GameRulesModal } from './GameRulesModal';
 import { RemoteDuelModal } from './RemoteDuelModal';
-import type { GameMetadata, GameId } from '../types/game';
+import type { GameMetadata, GameId, TableTheme } from '../types/game';
 import { playTapSound, triggerHaptic } from '../utils/feedback';
+import { getAllGameStats, hasSavedMatch } from '../utils/gameStats';
 
 export const GAME_CATALOG: GameMetadata[] = [
   {
@@ -205,8 +206,6 @@ export const GAME_CATALOG: GameMetadata[] = [
   },
 ];
 
-import type { TableTheme } from '../types/game';
-
 type CategoryFilter = 'all' | 'favorites' | 'cards' | 'strategy' | 'action' | 'dice';
 
 const CATEGORY_GROUPS: Record<Exclude<CategoryFilter, 'all' | 'favorites'>, GameId[]> = {
@@ -247,6 +246,11 @@ export const MainMenu: React.FC = () => {
   const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
   const [favorites, setFavorites] = useState<GameId[]>(getStoredFavorites);
+  const allStats = useMemo(() => getAllGameStats(), []);
+
+  const totalCareerWins = useMemo(() => {
+    return Object.values(allStats).reduce((sum, r) => sum + (r.winsP1 || 0), 0);
+  }, [allStats]);
 
   const toggleFavorite = (id: GameId, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -306,6 +310,14 @@ export const MainMenu: React.FC = () => {
     return [...favGames, ...otherGames];
   }, [activeFilter, favorites]);
 
+  const handleLaunchRandomGame = () => {
+    triggerHaptic('medium');
+    playTapSound();
+    const pool = filteredCatalog.length > 0 ? filteredCatalog : GAME_CATALOG;
+    const randomGame = pool[Math.floor(Math.random() * pool.length)];
+    startGame(randomGame.id);
+  };
+
   const isDarkTheme = theme === 'midnight' || theme === 'arcade' || theme === 'emerald';
 
   return (
@@ -330,6 +342,11 @@ export const MainMenu: React.FC = () => {
             }`}
           >
             <span>Tabletop Games</span>
+            {totalCareerWins > 0 && (
+              <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-500 font-black">
+                🏆 {totalCareerWins}W
+              </span>
+            )}
           </h1>
           <p
             className={`text-[10px] sm:text-xs font-semibold truncate ${
@@ -461,6 +478,17 @@ export const MainMenu: React.FC = () => {
         }`}
       >
         <div className="max-w-5xl mx-auto px-3 sm:px-6 py-1.5 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+          {/* Surprise Me / Random Game Quick Action */}
+          <button
+            type="button"
+            onClick={handleLaunchRandomGame}
+            className="px-2.5 py-1 rounded-full text-[11px] font-extrabold whitespace-nowrap flex items-center gap-1 transition-all shrink-0 active:scale-95 bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-sm border border-indigo-300/30 cursor-pointer"
+            title="Pick a random game from the current category"
+          >
+            <span>🎰</span>
+            <span>Surprise Me</span>
+          </button>
+
           {FILTER_PILLS.map((pill) => {
             const isSelected = activeFilter === pill.id;
             return (
@@ -532,6 +560,8 @@ export const MainMenu: React.FC = () => {
           <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-4 pb-6">
             {filteredCatalog.map((game) => {
               const isFav = favorites.includes(game.id);
+              const gStats = allStats[game.id];
+              const hasResume = hasSavedMatch(game.id);
               return (
                 <div
                   key={game.id}
@@ -589,16 +619,26 @@ export const MainMenu: React.FC = () => {
                     }}
                     className="w-full flex flex-col items-center focus:outline-none active:scale-95 transition-transform"
                   >
-                    {/* Subtle top indicator pill */}
-                    <div
-                      className={`w-8 h-1 rounded-full mb-1.5 transition-colors ${
-                        isFav
-                          ? 'bg-amber-400'
-                          : isDarkTheme
-                          ? 'bg-white/20 group-hover:bg-amber-400/60'
-                          : 'bg-[#d8c3a5]/70 group-hover:bg-player-1/40'
-                      }`}
-                    />
+                    {/* Subtle top indicator pill or Resume / Trophy status */}
+                    {hasResume ? (
+                      <span className="mb-1 px-2 py-0.2 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-500 text-[9px] font-black uppercase tracking-wider">
+                        💾 Resume Match
+                      </span>
+                    ) : gStats && gStats.winsP1 > 0 ? (
+                      <span className="mb-1 px-2 py-0.2 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-500 text-[9px] font-black uppercase tracking-wider">
+                        🏆 {gStats.winsP1}W {gStats.currentStreak > 1 ? `• 🔥${gStats.currentStreak}` : ''}
+                      </span>
+                    ) : (
+                      <div
+                        className={`w-8 h-1 rounded-full mb-1.5 transition-colors ${
+                          isFav
+                            ? 'bg-amber-400'
+                            : isDarkTheme
+                            ? 'bg-white/20 group-hover:bg-amber-400/60'
+                            : 'bg-[#d8c3a5]/70 group-hover:bg-player-1/40'
+                        }`}
+                      />
+                    )}
 
                     {/* Procedural Game Icon Container */}
                     <div
@@ -638,7 +678,7 @@ export const MainMenu: React.FC = () => {
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-player-1 inline-block" />
-                      <span>{gameMode === 'pve' ? 'Play vs CPU' : '2P Pass'}</span>
+                      <span>{hasResume ? 'Continue' : gameMode === 'pve' ? 'Play vs CPU' : '2P Pass'}</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-player-2 inline-block" />
                     </div>
                   </button>
@@ -662,7 +702,7 @@ export const MainMenu: React.FC = () => {
             <span>Share 1 Device • Play vs CPU • Online Duel</span>
           </div>
           <span className="text-[10px] uppercase font-bold tracking-widest bg-container-dark text-accent-light px-2 py-0.5 rounded-md border border-white/10">
-            v2.2.0
+            v2.3.0
           </span>
         </footer>
       </main>

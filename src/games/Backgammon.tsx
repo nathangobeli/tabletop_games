@@ -5,6 +5,7 @@ import { GameOverModal } from '../components/GameOverModal';
 import { GameContainer } from '../components/GameContainer';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
+import { saveMatchState, loadMatchState, clearMatchState } from '../utils/gameStats';
 
 // 24 Points (indices 0..23, corresponding to traditional points 1..24)
 // Point state: { count: number, player: PlayerNumber | 0 }
@@ -17,6 +18,18 @@ import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/fe
 interface PointState {
   count: number;
   player: PlayerNumber | 0;
+}
+
+interface BackgammonSavedMatch {
+  points: PointState[];
+  barP1: number;
+  barP2: number;
+  offP1: number;
+  offP2: number;
+  turn: PlayerNumber;
+  dice: number[];
+  movesRemaining: number[];
+  statusMessage: string;
 }
 
 // Initial standard Backgammon board setup (15 checkers each)
@@ -49,20 +62,55 @@ const getInitialPoints = (): PointState[] => {
 export const Backgammon: React.FC = () => {
   const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
-  const [points, setPoints] = useState<PointState[]>(getInitialPoints);
-  const [barP1, setBarP1] = useState<number>(0);
-  const [barP2, setBarP2] = useState<number>(0);
-  const [offP1, setOffP1] = useState<number>(0);
-  const [offP2, setOffP2] = useState<number>(0);
+  const savedMatch = useMemo(() => loadMatchState<BackgammonSavedMatch>('backgammon'), []);
 
-  const [turn, setTurn] = useState<PlayerNumber>(1);
-  const [dice, setDice] = useState<number[]>([3, 5]);
-  const [movesRemaining, setMovesRemaining] = useState<number[]>([]);
+  const [points, setPoints] = useState<PointState[]>(() => savedMatch?.points ?? getInitialPoints());
+  const [barP1, setBarP1] = useState<number>(() => savedMatch?.barP1 ?? 0);
+  const [barP2, setBarP2] = useState<number>(() => savedMatch?.barP2 ?? 0);
+  const [offP1, setOffP1] = useState<number>(() => savedMatch?.offP1 ?? 0);
+  const [offP2, setOffP2] = useState<number>(() => savedMatch?.offP2 ?? 0);
+
+  const [turn, setTurn] = useState<PlayerNumber>(() => savedMatch?.turn ?? 1);
+  const [dice, setDice] = useState<number[]>(() => savedMatch?.dice ?? [3, 5]);
+  const [movesRemaining, setMovesRemaining] = useState<number[]>(() => savedMatch?.movesRemaining ?? []);
   const [selectedPoint, setSelectedPoint] = useState<number | 'bar' | null>(null);
   const [winner, setWinner] = useState<PlayerNumber | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string>('Player 1: Roll the dice to start turn');
+  const [statusMessage, setStatusMessage] = useState<string>(
+    () => savedMatch?.statusMessage ?? 'Player 1: Roll the dice to start turn'
+  );
+
+  // Auto-save mid-match progress whenever board state changes
+  useEffect(() => {
+    if (winner !== null) {
+      clearMatchState('backgammon');
+      return;
+    }
+    const isInitial =
+      offP1 === 0 &&
+      offP2 === 0 &&
+      barP1 === 0 &&
+      barP2 === 0 &&
+      movesRemaining.length === 0 &&
+      turn === 1 &&
+      points[23]?.count === 2 &&
+      points[0]?.count === 2;
+    if (isInitial) return;
+
+    saveMatchState<BackgammonSavedMatch>('backgammon', {
+      points,
+      barP1,
+      barP2,
+      offP1,
+      offP2,
+      turn,
+      dice,
+      movesRemaining,
+      statusMessage,
+    });
+  }, [points, barP1, barP2, offP1, offP2, turn, dice, movesRemaining, statusMessage, winner]);
 
   const resetGame = useCallback(() => {
+    clearMatchState('backgammon');
     setPoints(getInitialPoints());
     setBarP1(0);
     setBarP2(0);

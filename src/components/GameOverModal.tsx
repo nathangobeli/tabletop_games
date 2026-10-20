@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { PlayerNumber } from '../types/game';
+import { useGame } from '../context/GameContext';
 import { triggerHaptic, playVictoryFanfare, playTapSound } from '../utils/feedback';
+import { recordGameResult, clearMatchState, type GameRecord } from '../utils/gameStats';
 import { VictoryConfettiOverlay } from './VictoryConfettiOverlay';
 
 interface StatItem {
@@ -24,10 +26,18 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onRestart,
   onMenu,
 }) => {
+  const { activeGame } = useGame();
+  const [record, setRecord] = useState<GameRecord | null>(null);
+
   useEffect(() => {
     triggerHaptic('success');
     playVictoryFanfare();
-  }, []);
+    if (activeGame) {
+      clearMatchState(activeGame);
+      const updated = recordGameResult(activeGame, winner);
+      setRecord(updated);
+    }
+  }, [activeGame, winner]);
 
   const isP1 = winner === 1;
   const isP2 = winner === 2;
@@ -79,9 +89,24 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           {isDraw ? "It's a Draw!" : `Player ${winner} Wins!`}
         </h2>
 
+        {/* All-Time Career Record Pill */}
+        {record && (
+          <div className="mt-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-[10px] font-black text-amber-300 flex items-center gap-2">
+            <span>🏆 P1 Wins: {record.winsP1}</span>
+            <span>•</span>
+            <span>P2: {record.winsP2}</span>
+            {record.currentStreak > 1 && (
+              <>
+                <span>•</span>
+                <span>🔥 {record.currentStreak} Streak</span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Final Stats Summary Card */}
         {stats && stats.length > 0 && (
-          <div className="w-full my-4 p-3 rounded-2xl bg-[#1e2226] border border-[#393f47] flex flex-col gap-2">
+          <div className="w-full my-3 p-3 rounded-2xl bg-[#1e2226] border border-[#393f47] flex flex-col gap-2">
             <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-accent-light/60 pb-1 border-b border-white/5">
               <span>Metric</span>
               <div className="flex gap-4">
