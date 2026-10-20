@@ -5,6 +5,21 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-10-19 — "Cribbage Board Visual Overhaul & Interactive Player Hand/Crib Scoring"
+
+### Enhanced — Cribbage Board Visuals & Interactive Player Scoring (`src/games/Cribbage.tsx`)
+- **Larger, 5-Hole Grouped Carved Cribbage Board (`WoodenCribbageBoard`)**:
+  - Upgraded the SVG board dimensions (`viewBox="0 0 620 184"`) and reduced outer bezel padding so the board renders ~45% larger and crisper on mobile portrait screens without crowding the card play area.
+  - Organized each 40-hole street into **8 authentic 5-hole blocks** with engraved brass divider ticks, wider dual-lane spacing (`±6.2`), recessed track channels, inlaid `2× SKUNK 60` and `SKUNK 90` plaques, and larger milestone numbers (`5, 10, 15...120`).
+  - Upgraded the 4 pegs into **3D tapered dome pegs** with glowing front-peg highlight rings and live numeric score readouts stamped directly on the front Brass and Steel pegs.
+  - Added a **`🔍 Larger Board` / `Standard Board`** quick-zoom toggle in the peg bar and anchored *The Show* overlay strictly inside the lower tabletop container so the board is 100% uncovered at all times.
+- **Interactive Player Hand & Crib Scoring (Manual for Players, Automatic for CPU)**:
+  - During *The Show* (`show_non_dealer`, `show_dealer`, `show_crib`), human players now count and peg their own Hands and Cribs while `🤖 CPU` continues to count and peg its Hand/Crib automatically.
+  - Added an interactive **Hand Point Counter** with quick-tap combination buttons (`+2 Fifteen`, `+2 Pair`, `+3 Run of 3`, `+4 Run/Flush`, `+5 Run/Flush`, `+1 His Nobs`), fine-tune `-2 / -1 / +1 / Reset` steppers, and tappable cards that display a live selected sum (`Selected Cards Sum: 15 ✨`).
+  - Added count verification when tapping **`📌 Peg X Points`**: exact counts immediately clack and leapfrog the player's peg across the board, while undercounts/overcounts alert the player to recount or tap `✨ Peg Actual` to view the itemized breakdown.
+
+---
+
 ## [2.2.1] - 2026-10-19 — "Billiards (8-Ball Pool) Mobile Orientation Fix & Full-Screen Portrait/Landscape Table Layout"
 
 ### Fixed & Improved — Billiards Mobile Rotation & Screen Utilization (`src/games/Billiards.tsx`)

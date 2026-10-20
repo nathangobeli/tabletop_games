@@ -167,50 +167,60 @@ export const ProceduralCribbageCard: React.FC<{
 // ============================================================================
 
 /**
- * Calculates continuous (x, y) coordinates for any hole -1..121.
+ * Calculates continuous (x, y) coordinates for any hole -1..121
+ * across 3 streets of 40 holes grouped into 8 blocks of 5 holes per street.
  * Hole -1 & 0 are the two starting holes before the Start line.
- * Track 1: Outer (Brass Pegs / Player 1)
- * Track 2: Inner (Steel Pegs / Player 2)
+ * Track 1: Outer/Top Lane (Polished Brass Pegs / Player 1)
+ * Track 2: Inner/Bottom Lane (Brushed Steel Pegs / Player 2)
  */
 export const getBoardHoleCoords = (hole: number, track: 1 | 2): { x: number; y: number } => {
-  const laneOffset = track === 1 ? -4.5 : 4.5;
+  const laneOffset = track === 1 ? -6.2 : 6.2;
+
+  // Helper to compute X position along a 40-hole street with 5-hole block grouping
+  const getStreetX = (idxZeroTo39: number, direction: 'right' | 'left'): number => {
+    const block = Math.floor(idxZeroTo39 / 5); // 0..7
+    const posInBlock = idxZeroTo39 % 5; // 0..4
+    // 11.2px between holes in a 5-hole group, plus an extra 10px gap between each 5-hole group
+    const offset = block * (4 * 11.2 + 21.2) + posInBlock * 11.2;
+    return direction === 'right' ? 54 + offset : 560.8 - offset;
+  };
 
   // Rear Start Hole (Hole -1)
   if (hole < 0) {
-    return { x: 20, y: 30 + laneOffset };
+    return { x: 20, y: 36 + laneOffset };
   }
 
   // Front Start Hole (Hole 0)
   if (hole === 0) {
-    return { x: 31, y: 30 + laneOffset };
+    return { x: 32, y: 36 + laneOffset };
   }
 
   // Finish Hole (Hole 121 - "Game")
   if (hole >= 121) {
-    return { x: 636, y: 106 + (track === 1 ? -4 : 4) };
+    return { x: 592, y: 148 + (track === 1 ? -4.8 : 4.8) };
   }
 
   // Street 1: Holes 1 to 40 (Moving Right across top street)
   if (hole <= 40) {
-    const t = (hole - 1) / 39;
-    const x = 50 + t * 560;
-    const y = 30 + laneOffset;
-    return { x, y };
+    return {
+      x: getStreetX(hole - 1, 'right'),
+      y: 36 + laneOffset,
+    };
   }
 
   // Street 2: Holes 41 to 80 (Moving Left across middle street)
   if (hole <= 80) {
-    const t = (hole - 41) / 39;
-    const x = 610 - t * 560;
-    const y = 68 + laneOffset;
-    return { x, y };
+    return {
+      x: getStreetX(hole - 41, 'left'),
+      y: 92 + laneOffset,
+    };
   }
 
   // Street 3: Holes 81 to 120 (Moving Right across bottom street)
-  const t = (hole - 81) / 39;
-  const x = 50 + t * 560;
-  const y = 106 + laneOffset;
-  return { x, y };
+  return {
+    x: getStreetX(hole - 81, 'right'),
+    y: 148 + laneOffset,
+  };
 };
 
 export const WoodenCribbageBoard: React.FC<{
@@ -218,7 +228,8 @@ export const WoodenCribbageBoard: React.FC<{
   prevScoreP1: number;
   scoreP2: number;
   prevScoreP2: number;
-}> = ({ scoreP1, prevScoreP1, scoreP2, prevScoreP2 }) => {
+  isExpanded?: boolean;
+}> = ({ scoreP1, prevScoreP1, scoreP2, prevScoreP2, isExpanded = false }) => {
   const [isLeapingP1, setIsLeapingP1] = useState(false);
   const [isLeapingP2, setIsLeapingP2] = useState(false);
 
@@ -244,13 +255,28 @@ export const WoodenCribbageBoard: React.FC<{
     }
   }, [scoreP2, prevScoreP2]);
 
-  // Generate all 120 static hole points for both lanes
+  // Generate all 120 static hole points for both lanes + 5-hole block dividers
   const holeMarkers = useMemo(() => {
-    const markers: { hole: number; x1: number; y1: number; x2: number; y2: number }[] = [];
+    const markers: {
+      hole: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      dividerX?: number;
+      streetY: number;
+    }[] = [];
     for (let h = 1; h <= 120; h++) {
       const p1 = getBoardHoleCoords(h, 1);
       const p2 = getBoardHoleCoords(h, 2);
-      markers.push({ hole: h, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+      const streetY = h <= 40 ? 36 : h <= 80 ? 92 : 148;
+      // Add a 5-hole block divider after every 5th hole (except the 40th hole at the end of a street)
+      let dividerX: number | undefined;
+      if (h % 5 === 0 && h % 40 !== 0) {
+        const nextP1 = getBoardHoleCoords(h + 1, 1);
+        dividerX = (p1.x + nextP1.x) / 2;
+      }
+      markers.push({ hole: h, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, dividerX, streetY });
     }
     return markers;
   }, []);
@@ -266,127 +292,238 @@ export const WoodenCribbageBoard: React.FC<{
   const p2Front = getBoardHoleCoords(p2FrontHole, 2);
   const p2Back = getBoardHoleCoords(p2BackHole, 2);
 
+  // Skunk (90) and Double Skunk (60) exact divider positions
+  const dblSkunkX = (getBoardHoleCoords(60, 1).x + getBoardHoleCoords(61, 1).x) / 2;
+  const skunkX = (getBoardHoleCoords(90, 1).x + getBoardHoleCoords(91, 1).x) / 2;
+
   return (
-    <div className="w-full max-w-4xl mx-auto rounded-3xl p-2 sm:p-2.5 bg-[#241309] border-4 border-[#3e1f0d] shadow-2xl overflow-hidden select-none relative clubhouse-board-depth">
+    <div
+      className={`w-full ${
+        isExpanded ? 'max-w-5xl' : 'max-w-4xl'
+      } mx-auto rounded-2xl sm:rounded-3xl p-1 sm:p-1.5 bg-gradient-to-b from-[#33190b] to-[#1e0e05] border-2 sm:border-3 border-[#6b3719] shadow-2xl overflow-hidden select-none relative transition-all duration-200`}
+    >
       <svg
-        viewBox="0 0 660 140"
-        className="w-full h-auto drop-shadow-lg"
-        style={{ touchAction: 'none' }}
+        viewBox="0 0 620 184"
+        className="w-full h-auto drop-shadow-md block"
+        style={{
+          touchAction: 'none',
+          minHeight: isExpanded ? '138px' : '96px',
+        }}
       >
         <defs>
           <style>{`
             @keyframes pegLeapfrogArc {
               0% { transform: translateY(0) scale(1); }
-              40% { transform: translateY(-11px) scale(1.35); }
+              40% { transform: translateY(-13px) scale(1.38); }
               100% { transform: translateY(0) scale(1); }
             }
             @keyframes pegLeapfrogShadow {
-              0% { rx: 4.5px; ry: 4.5px; opacity: 0.55; transform: translateY(0); }
-              40% { rx: 7.5px; ry: 7.5px; opacity: 0.22; transform: translateY(6px); }
-              100% { rx: 4.5px; ry: 4.5px; opacity: 0.55; transform: translateY(0); }
+              0% { rx: 5.5px; ry: 5.5px; opacity: 0.6; transform: translateY(0); }
+              40% { rx: 8.5px; ry: 8.5px; opacity: 0.22; transform: translateY(7px); }
+              100% { rx: 5.5px; ry: 5.5px; opacity: 0.6; transform: translateY(0); }
             }
           `}</style>
 
-          {/* Rich Carved Walnut Finish Gradient */}
+          {/* Rich Carved Walnut & Cherry Wood Finish Gradient */}
           <linearGradient id="walnutWood" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4a2511" />
-            <stop offset="35%" stopColor="#3c1d0c" />
-            <stop offset="70%" stopColor="#572b14" />
-            <stop offset="100%" stopColor="#32170a" />
+            <stop offset="0%" stopColor="#5a2d15" />
+            <stop offset="30%" stopColor="#43200e" />
+            <stop offset="65%" stopColor="#633218" />
+            <stop offset="100%" stopColor="#381a0b" />
+          </linearGradient>
+
+          {/* Recessed Track Channel Gradient */}
+          <linearGradient id="trackChannel" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#1b0b04" />
+            <stop offset="50%" stopColor="#2a1308" />
+            <stop offset="100%" stopColor="#160903" />
           </linearGradient>
 
           {/* Sunken Drilled Hole Bevel */}
-          <radialGradient id="holeDepth" cx="40%" cy="40%" r="60%">
-            <stop offset="0%" stopColor="#0a0502" />
-            <stop offset="85%" stopColor="#1a0b04" />
-            <stop offset="100%" stopColor="#3b1d0e" />
+          <radialGradient id="holeDepth" cx="38%" cy="38%" r="62%">
+            <stop offset="0%" stopColor="#050201" />
+            <stop offset="75%" stopColor="#180a04" />
+            <stop offset="100%" stopColor="#4c2512" />
           </radialGradient>
 
           {/* Polished Brass Peg (Player 1) */}
-          <radialGradient id="brassPeg" cx="30%" cy="30%" r="70%">
-            <stop offset="0%" stopColor="#fef08a" />
-            <stop offset="45%" stopColor="#eab308" />
-            <stop offset="85%" stopColor="#a16207" />
+          <radialGradient id="brassPeg" cx="32%" cy="28%" r="68%">
+            <stop offset="0%" stopColor="#fef9c3" />
+            <stop offset="35%" stopColor="#facc15" />
+            <stop offset="75%" stopColor="#ca8a04" />
             <stop offset="100%" stopColor="#713f12" />
           </radialGradient>
 
           {/* Brushed Stainless Steel Peg (Player 2 / CPU) */}
-          <radialGradient id="steelPeg" cx="30%" cy="30%" r="70%">
+          <radialGradient id="steelPeg" cx="32%" cy="28%" r="68%">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="45%" stopColor="#cbd5e1" />
-            <stop offset="80%" stopColor="#64748b" />
-            <stop offset="100%" stopColor="#334155" />
+            <stop offset="38%" stopColor="#e2e8f0" />
+            <stop offset="78%" stopColor="#64748b" />
+            <stop offset="100%" stopColor="#1e293b" />
           </radialGradient>
 
           {/* Gold Inlaid Finish Ring */}
-          <radialGradient id="finishRing" cx="40%" cy="40%" r="60%">
-            <stop offset="0%" stopColor="#fde047" />
-            <stop offset="100%" stopColor="#854d0e" />
+          <radialGradient id="finishRing" cx="38%" cy="38%" r="62%">
+            <stop offset="0%" stopColor="#fef08a" />
+            <stop offset="55%" stopColor="#eab308" />
+            <stop offset="100%" stopColor="#78350f" />
           </radialGradient>
         </defs>
 
         {/* Board Surface Base Plate */}
         <rect
-          x="4"
-          y="4"
-          width="652"
-          height="132"
-          rx="22"
+          x="3"
+          y="3"
+          width="614"
+          height="178"
+          rx="20"
           fill="url(#walnutWood)"
-          stroke="#5c2e17"
+          stroke="#854d27"
           strokeWidth="2.5"
         />
 
-        {/* Track Grooves / Guides */}
-        <path
-          d="M 18 30 H 610 Q 640 49 610 68 H 50 Q 20 87 50 106 H 610"
+        {/* Subtle Inner Brass Pinstripe Frame */}
+        <rect
+          x="8"
+          y="7"
+          width="604"
+          height="170"
+          rx="16"
           fill="none"
-          stroke="#1c0c05"
-          strokeWidth="19"
-          strokeLinecap="round"
-          opacity="0.5"
+          stroke="#d97706"
+          strokeWidth="0.9"
+          opacity="0.35"
         />
 
+        {/* Carved Serpentine Track Channels (3 Streets) */}
+        <path
+          d="M 16 36 H 563 Q 596 64 563 92 H 52 Q 19 120 52 148 H 566"
+          fill="none"
+          stroke="url(#trackChannel)"
+          strokeWidth="23"
+          strokeLinecap="round"
+          opacity="0.88"
+        />
+        <path
+          d="M 16 36 H 563 Q 596 64 563 92 H 52 Q 19 120 52 148 H 566"
+          fill="none"
+          stroke="#7c421e"
+          strokeWidth="24.2"
+          strokeLinecap="round"
+          opacity="0.28"
+        />
+
+        {/* Center Brass Pinstripe Separating Track 1 (Outer/Top) and Track 2 (Inner/Bottom) */}
+        <line x1="16" y1="36" x2="564" y2="36" stroke="#f59e0b" strokeWidth="0.8" opacity="0.35" />
+        <line x1="51" y1="92" x2="564" y2="92" stroke="#f59e0b" strokeWidth="0.8" opacity="0.35" />
+        <line x1="51" y1="148" x2="566" y2="148" stroke="#f59e0b" strokeWidth="0.8" opacity="0.35" />
+
+        {/* Turnaround Curve Arrows */}
+        <text x="582" y="68" fill="#fbbf24" fontSize="10" fontWeight="900" textAnchor="middle" opacity="0.65">
+          ⤵
+        </text>
+        <text x="31" y="124" fill="#fbbf24" fontSize="10" fontWeight="900" textAnchor="middle" opacity="0.65">
+          ↪
+        </text>
+
         {/* Start Line Marker */}
-        <line x1="41" y1="16" x2="41" y2="44" stroke="#d97706" strokeWidth="1.5" strokeDasharray="2 2" opacity="0.85" />
-        <text x="38" y="14" fill="#fbbf24" fontSize="7.5" fontWeight="900" textAnchor="end">START</text>
+        <line x1="43" y1="21" x2="43" y2="51" stroke="#fbbf24" strokeWidth="2" strokeDasharray="2.5 2" />
+        <text x="41" y="17" fill="#fde047" fontSize="8.5" fontWeight="900" textAnchor="end" letterSpacing="0.5">
+          START
+        </text>
 
         {/* Double Skunk Line at 60 */}
-        <line x1="337" y1="56" x2="337" y2="80" stroke="#ef4444" strokeWidth="2" strokeDasharray="2 2" />
-        <text x="337" y="53" fill="#f87171" fontSize="7" fontWeight="900" textAnchor="middle">DBL SKUNK (60)</text>
+        <line
+          x1={dblSkunkX}
+          y1="76"
+          x2={dblSkunkX}
+          y2="108"
+          stroke="#f87171"
+          strokeWidth="2.2"
+          strokeDasharray="2.5 2"
+        />
+        <rect x={dblSkunkX - 28} y="60" width="56" height="12" rx="4" fill="#450a0a" stroke="#ef4444" strokeWidth="0.8" />
+        <text x={dblSkunkX} y="68.5" fill="#fca5a5" fontSize="7.5" fontWeight="900" textAnchor="middle">
+          2× SKUNK 60
+        </text>
 
         {/* Skunk Line at 90 */}
-        <line x1="179.2" y1="94" x2="179.2" y2="118" stroke="#f59e0b" strokeWidth="2" strokeDasharray="2 2" />
-        <text x="179.2" y="127" fill="#fbbf24" fontSize="7" fontWeight="900" textAnchor="middle">SKUNK (90)</text>
+        <line
+          x1={skunkX}
+          y1="132"
+          x2={skunkX}
+          y2="164"
+          stroke="#fbbf24"
+          strokeWidth="2.2"
+          strokeDasharray="2.5 2"
+        />
+        <rect x={skunkX - 24} y="116" width="48" height="12" rx="4" fill="#451a03" stroke="#f59e0b" strokeWidth="0.8" />
+        <text x={skunkX} y="124.5" fill="#fde047" fontSize="7.5" fontWeight="900" textAnchor="middle">
+          SKUNK 90
+        </text>
 
-        {/* Finish Hole Marker at 121 */}
-        <circle cx="636" cy="106" r="8" fill="url(#finishRing)" stroke="#fde047" strokeWidth="1.2" />
-        <circle cx="636" cy="102" r="2.6" fill="url(#holeDepth)" />
-        <circle cx="636" cy="110" r="2.6" fill="url(#holeDepth)" />
-        <text x="636" y="93" fill="#fde047" fontSize="7.5" fontWeight="900" textAnchor="middle">121 GAME</text>
+        {/* Finish Hole Medallion at 121 */}
+        <circle cx="592" cy="148" r="11.5" fill="url(#finishRing)" stroke="#fef08a" strokeWidth="1.5" />
+        <circle cx="592" cy="143.2" r="3" fill="url(#holeDepth)" stroke="#451a03" strokeWidth="0.7" />
+        <circle cx="592" cy="152.8" r="3" fill="url(#holeDepth)" stroke="#451a03" strokeWidth="0.7" />
+        <text x="592" y="131" fill="#fde047" fontSize="8.5" fontWeight="900" textAnchor="middle">
+          121 WIN
+        </text>
 
         {/* Two Starting Holes per Track (Holes -1 and 0) */}
-        <circle cx="20" cy="25.5" r="2.5" fill="url(#holeDepth)" stroke="#271207" strokeWidth="0.8" />
-        <circle cx="31" cy="25.5" r="2.5" fill="url(#holeDepth)" stroke="#271207" strokeWidth="0.8" />
-        <circle cx="20" cy="34.5" r="2.5" fill="url(#holeDepth)" stroke="#271207" strokeWidth="0.8" />
-        <circle cx="31" cy="34.5" r="2.5" fill="url(#holeDepth)" stroke="#271207" strokeWidth="0.8" />
+        <circle cx="20" cy="29.8" r="2.9" fill="url(#holeDepth)" stroke="#92400e" strokeWidth="0.8" />
+        <circle cx="32" cy="29.8" r="2.9" fill="url(#holeDepth)" stroke="#92400e" strokeWidth="0.8" />
+        <circle cx="20" cy="42.2" r="2.9" fill="url(#holeDepth)" stroke="#64748b" strokeWidth="0.8" />
+        <circle cx="32" cy="42.2" r="2.9" fill="url(#holeDepth)" stroke="#64748b" strokeWidth="0.8" />
 
-        {/* Drilled Track Holes 1..120 */}
-        {holeMarkers.map(({ hole, x1, y1, x2, y2 }) => {
+        {/* Drilled Track Holes 1..120 & 5-Hole Block Dividers */}
+        {holeMarkers.map(({ hole, x1, y1, x2, y2, dividerX, streetY }) => {
           const isMilestone = hole % 5 === 0;
+          const isTenth = hole % 10 === 0;
           return (
             <g key={hole}>
-              <circle cx={x1} cy={y1} r={isMilestone ? 2.6 : 2.2} fill="url(#holeDepth)" stroke="#241106" strokeWidth="0.6" />
-              <circle cx={x2} cy={y2} r={isMilestone ? 2.6 : 2.2} fill="url(#holeDepth)" stroke="#241106" strokeWidth="0.6" />
-              {isMilestone && (
+              {/* 5-Hole Group Divider Tick */}
+              {dividerX !== undefined && hole !== 60 && hole !== 90 && (
+                <line
+                  x1={dividerX}
+                  y1={streetY - 10.5}
+                  x2={dividerX}
+                  y2={streetY + 10.5}
+                  stroke="#d97706"
+                  strokeWidth="1.1"
+                  opacity="0.55"
+                />
+              )}
+
+              {/* Outer Track Hole (P1 Brass Lane) */}
+              <circle
+                cx={x1}
+                cy={y1}
+                r={isMilestone ? 3.1 : 2.7}
+                fill="url(#holeDepth)"
+                stroke={isMilestone ? '#b45309' : '#3b1c0b'}
+                strokeWidth={isMilestone ? '0.9' : '0.65'}
+              />
+
+              {/* Inner Track Hole (P2 Steel Lane) */}
+              <circle
+                cx={x2}
+                cy={y2}
+                r={isMilestone ? 3.1 : 2.7}
+                fill="url(#holeDepth)"
+                stroke={isMilestone ? '#64748b' : '#3b1c0b'}
+                strokeWidth={isMilestone ? '0.9' : '0.65'}
+              />
+
+              {/* Crisp Milestone Labels Every 5 Holes */}
+              {isMilestone && hole !== 60 && hole !== 90 && (
                 <text
-                  x={(x1 + x2) / 2}
-                  y={hole <= 40 ? 19 : hole <= 80 ? 84 : 123}
-                  fill="#d4a373"
-                  fontSize="6.5"
-                  fontWeight="800"
+                  x={x1}
+                  y={hole <= 40 ? 18 : hole <= 80 ? 73 : 172}
+                  fill={isTenth ? '#fde68a' : '#d6a87c'}
+                  fontSize={isTenth ? '9' : '8'}
+                  fontWeight="900"
                   textAnchor="middle"
-                  opacity="0.85"
                 >
                   {hole}
                 </text>
@@ -395,13 +532,15 @@ export const WoodenCribbageBoard: React.FC<{
           );
         })}
 
-        {/* PLAYER 1: BRASS PEGS (Outer Track) */}
+        {/* PLAYER 1: 3D TAPERED BRASS PEGS (Top/Outer Track) */}
+        {/* P1 Back Peg */}
         <g className="transition-all duration-300" style={{ transformOrigin: `${p1Back.x}px ${p1Back.y}px` }}>
-          <ellipse cx={p1Back.x + 1} cy={p1Back.y + 1} rx="4" ry="4" fill="#000" opacity="0.45" />
-          <circle cx={p1Back.x} cy={p1Back.y} r="3.6" fill="url(#brassPeg)" stroke="#78350f" strokeWidth="0.8" />
-          <circle cx={p1Back.x - 1} cy={p1Back.y - 1} r="1.1" fill="#fff" opacity="0.75" />
+          <ellipse cx={p1Back.x + 1.2} cy={p1Back.y + 1.4} rx="4.6" ry="4.6" fill="#000" opacity="0.5" />
+          <circle cx={p1Back.x} cy={p1Back.y} r="4.1" fill="url(#brassPeg)" stroke="#78350f" strokeWidth="1" />
+          <circle cx={p1Back.x - 1.2} cy={p1Back.y - 1.2} r="1.4" fill="#fff" opacity="0.8" />
         </g>
 
+        {/* P1 Front Peg (Larger 3D Dome with Glow Ring & Live Score Readout) */}
         <g
           className="transition-all duration-300"
           style={{
@@ -409,28 +548,44 @@ export const WoodenCribbageBoard: React.FC<{
             animation: isLeapingP1 ? 'pegLeapfrogArc 450ms cubic-bezier(0.34, 1.56, 0.64, 1)' : undefined,
           }}
         >
+          <circle cx={p1Front.x} cy={p1Front.y} r="7.8" fill="#facc15" opacity="0.18" />
+          <circle cx={p1Front.x} cy={p1Front.y} r="7.4" fill="none" stroke="#facc15" strokeWidth="1.3" opacity="0.65" />
           <ellipse
-            cx={p1Front.x + 1.2}
-            cy={p1Front.y + 1.2}
-            rx="4.5"
-            ry="4.5"
+            cx={p1Front.x + 1.5}
+            cy={p1Front.y + 1.8}
+            rx="5.6"
+            ry="5.6"
             fill="#000"
-            opacity="0.55"
+            opacity="0.6"
             style={{
               animation: isLeapingP1 ? 'pegLeapfrogShadow 450ms ease-in-out' : undefined,
             }}
           />
-          <circle cx={p1Front.x} cy={p1Front.y} r="4.2" fill="url(#brassPeg)" stroke="#78350f" strokeWidth="0.9" />
-          <circle cx={p1Front.x - 1.2} cy={p1Front.y - 1.2} r="1.4" fill="#fff" opacity="0.85" />
+          <circle cx={p1Front.x} cy={p1Front.y - 1} r="5.6" fill="url(#brassPeg)" stroke="#713f12" strokeWidth="1.1" />
+          <circle cx={p1Front.x - 1.8} cy={p1Front.y - 2.6} r="1.6" fill="#fff" opacity="0.9" />
+          {scoreP1 > 0 && (
+            <text
+              x={p1Front.x}
+              y={p1Front.y + 1.2}
+              fill="#271203"
+              fontSize="6.4"
+              fontWeight="900"
+              textAnchor="middle"
+            >
+              {scoreP1}
+            </text>
+          )}
         </g>
 
-        {/* PLAYER 2: STAINLESS STEEL PEGS (Inner Track) */}
+        {/* PLAYER 2: 3D TAPERED STAINLESS STEEL PEGS (Bottom/Inner Track) */}
+        {/* P2 Back Peg */}
         <g className="transition-all duration-300" style={{ transformOrigin: `${p2Back.x}px ${p2Back.y}px` }}>
-          <ellipse cx={p2Back.x + 1} cy={p2Back.y + 1} rx="4" ry="4" fill="#000" opacity="0.45" />
-          <circle cx={p2Back.x} cy={p2Back.y} r="3.6" fill="url(#steelPeg)" stroke="#1e293b" strokeWidth="0.8" />
-          <circle cx={p2Back.x - 1} cy={p2Back.y - 1} r="1.1" fill="#fff" opacity="0.75" />
+          <ellipse cx={p2Back.x + 1.2} cy={p2Back.y + 1.4} rx="4.6" ry="4.6" fill="#000" opacity="0.5" />
+          <circle cx={p2Back.x} cy={p2Back.y} r="4.1" fill="url(#steelPeg)" stroke="#1e293b" strokeWidth="1" />
+          <circle cx={p2Back.x - 1.2} cy={p2Back.y - 1.2} r="1.4" fill="#fff" opacity="0.8" />
         </g>
 
+        {/* P2 Front Peg (Larger 3D Dome with Glow Ring & Live Score Readout) */}
         <g
           className="transition-all duration-300"
           style={{
@@ -438,19 +593,33 @@ export const WoodenCribbageBoard: React.FC<{
             animation: isLeapingP2 ? 'pegLeapfrogArc 450ms cubic-bezier(0.34, 1.56, 0.64, 1)' : undefined,
           }}
         >
+          <circle cx={p2Front.x} cy={p2Front.y} r="7.8" fill="#e2e8f0" opacity="0.18" />
+          <circle cx={p2Front.x} cy={p2Front.y} r="7.4" fill="none" stroke="#e2e8f0" strokeWidth="1.3" opacity="0.65" />
           <ellipse
-            cx={p2Front.x + 1.2}
-            cy={p2Front.y + 1.2}
-            rx="4.5"
-            ry="4.5"
+            cx={p2Front.x + 1.5}
+            cy={p2Front.y + 1.8}
+            rx="5.6"
+            ry="5.6"
             fill="#000"
-            opacity="0.55"
+            opacity="0.6"
             style={{
               animation: isLeapingP2 ? 'pegLeapfrogShadow 450ms ease-in-out' : undefined,
             }}
           />
-          <circle cx={p2Front.x} cy={p2Front.y} r="4.2" fill="url(#steelPeg)" stroke="#1e293b" strokeWidth="0.9" />
-          <circle cx={p2Front.x - 1.2} cy={p2Front.y - 1.2} r="1.4" fill="#fff" opacity="0.85" />
+          <circle cx={p2Front.x} cy={p2Front.y - 1} r="5.6" fill="url(#steelPeg)" stroke="#0f172a" strokeWidth="1.1" />
+          <circle cx={p2Front.x - 1.8} cy={p2Front.y - 2.6} r="1.6" fill="#fff" opacity="0.9" />
+          {scoreP2 > 0 && (
+            <text
+              x={p2Front.x}
+              y={p2Front.y + 1.2}
+              fill="#0f172a"
+              fontSize="6.4"
+              fontWeight="900"
+              textAnchor="middle"
+            >
+              {scoreP2}
+            </text>
+          )}
         </g>
       </svg>
     </div>
@@ -508,13 +677,22 @@ export const Cribbage: React.FC = () => {
   const [p2SaidGo, setP2SaidGo] = useState<boolean>(false);
   const [isCycleResetting, setIsCycleResetting] = useState<boolean>(false);
 
-  // The Show Breakdown State
+  // The Show Breakdown & Interactive Player Scoring State
   const [activeShowScore, setActiveShowScore] = useState<{
     player: PlayerNumber;
     title: string;
     hand: CribbageCard[];
     score: CribbageHandScore;
+    isCrib: boolean;
   } | null>(null);
+  const [isShowStepScored, setIsShowStepScored] = useState<boolean>(false);
+  const [claimedShowPoints, setClaimedShowPoints] = useState<number>(0);
+  const [showSelectedCardIds, setShowSelectedCardIds] = useState<string[]>([]);
+  const [showCountFeedback, setShowCountFeedback] = useState<{
+    type: 'exact' | 'mismatch' | 'revealed';
+    message: string;
+  } | null>(null);
+  const [isBoardExpanded, setIsBoardExpanded] = useState<boolean>(false);
 
   // Status & Alerts
   const [statusMessage, setStatusMessage] = useState<string>('Select 2 cards to toss into the Crib.');
@@ -707,7 +885,7 @@ export const Cribbage: React.FC = () => {
       const starter = deck[12];
 
       setDealer(nextDealer);
-      setTurn( activeMode === 'pass-and-play' ? 1 : nonDealer );
+      setTurn(activeMode === 'pass-and-play' ? 1 : nonDealer);
       setHandP1(p1Dealt);
       setHandP2(p2Dealt);
       setCrib([]);
@@ -719,7 +897,7 @@ export const Cribbage: React.FC = () => {
       setPhase('discarding');
       setPassPhonePlayer(null);
 
-      // Pegging resets
+      // Pegging & Show resets
       setPeggingHandP1([]);
       setPeggingHandP2([]);
       setCurrentRunningCount(0);
@@ -730,6 +908,10 @@ export const Cribbage: React.FC = () => {
       setP2SaidGo(false);
       setIsCycleResetting(false);
       setActiveShowScore(null);
+      setIsShowStepScored(false);
+      setClaimedShowPoints(0);
+      setShowSelectedCardIds([]);
+      setShowCountFeedback(null);
       setPeggingCallout(null);
 
       const dealerName = nextDealer === 1 ? 'Player 1' : activeMode === 'vs-cpu' ? '🤖 CPU' : 'Player 2';
@@ -985,7 +1167,53 @@ export const Cribbage: React.FC = () => {
   // -------------------------------------------------------------------------
   // The Show: Hand & Crib Counting in Strict Tournament Order
   // (Non-Dealer Hand -> Dealer Hand -> Dealer's Crib)
+  // Human players count & peg their own hands; CPU counts automatically!
   // -------------------------------------------------------------------------
+  const configureShowStep = useCallback(
+    (
+      nextPhase: 'show_non_dealer' | 'show_dealer' | 'show_crib',
+      stepOwner: PlayerNumber,
+      title: string,
+      cardsToScore: CribbageCard[],
+      starter: CribbageCard,
+      isCrib: boolean
+    ) => {
+      const computedScore = scoreHand(cardsToScore, starter, isCrib);
+      const ownerLabel = getPlayerLabel(stepOwner);
+      const activeMode = stateRef.current.gamePlayMode;
+      const isCpuOwner = activeMode === 'vs-cpu' && stepOwner === 2;
+
+      setPhase(nextPhase);
+      setTurn(stepOwner);
+      setActiveShowScore({
+        player: stepOwner,
+        title,
+        hand: cardsToScore,
+        score: computedScore,
+        isCrib,
+      });
+      setClaimedShowPoints(0);
+      setShowSelectedCardIds([]);
+
+      if (isCpuOwner) {
+        // CPU automatically scores and pegs its own Hand / Crib
+        setIsShowStepScored(true);
+        setShowCountFeedback({
+          type: 'exact',
+          message: `🤖 CPU counted +${computedScore.total} pts automatically.`,
+        });
+        setStatusMessage(`The Show: ${ownerLabel} counts ${isCrib ? 'Crib' : 'Hand'} (+${computedScore.total} pts).`);
+        addPoints(stepOwner, computedScore.total, `${ownerLabel} ${isCrib ? 'Crib' : 'Hand'}: +${computedScore.total} pts`);
+      } else {
+        // Human player counts & pegs their own Hand / Crib!
+        setIsShowStepScored(false);
+        setShowCountFeedback(null);
+        setStatusMessage(`The Show: ${ownerLabel}, count your ${isCrib ? 'Crib' : 'Hand'} and peg your points!`);
+      }
+    },
+    [addPoints, getPlayerLabel]
+  );
+
   const startTheShow = useCallback(() => {
     const starter = stateRef.current.starterCut;
     if (!starter || stateRef.current.winner !== null) return;
@@ -995,16 +1223,14 @@ export const Cribbage: React.FC = () => {
     const nonDealerHand = nonDealer === 1 ? stateRef.current.handP1 : stateRef.current.handP2;
     const nonDealerLabel = getPlayerLabel(nonDealer);
 
-    setPhase('show_non_dealer');
-    const nonDealerScore = scoreHand(nonDealerHand, starter, false);
-    setActiveShowScore({
-      player: nonDealer,
-      title: `${nonDealerLabel}'s Hand (Non-Dealer Counts First)`,
-      hand: nonDealerHand,
-      score: nonDealerScore,
-    });
-    setStatusMessage(`The Show: ${nonDealerLabel} counts hand first (+${nonDealerScore.total} pts).`);
-    addPoints(nonDealer, nonDealerScore.total, `${nonDealerLabel} Hand: +${nonDealerScore.total} pts`);
+    configureShowStep(
+      'show_non_dealer',
+      nonDealer,
+      `${nonDealerLabel}'s Hand (Non-Dealer Counts First)`,
+      nonDealerHand,
+      starter,
+      false
+    );
 
     if (stateRef.current.gamePlayMode === 'remote' && localPlayer === 1) {
       multiplayer.send({
@@ -1019,7 +1245,83 @@ export const Cribbage: React.FC = () => {
         },
       });
     }
-  }, [addPoints, getPlayerLabel, localPlayer]);
+  }, [configureShowStep, getPlayerLabel, localPlayer]);
+
+  // Human Player Submits Their Claimed Hand/Crib Score
+  const handleSubmitHumanShowScore = () => {
+    if (!activeShowScore || isShowStepScored) return;
+
+    const actualTotal = activeShowScore.score.total;
+    const ownerLabel = getPlayerLabel(activeShowScore.player);
+    const kindLabel = activeShowScore.isCrib ? 'Crib' : 'Hand';
+
+    if (claimedShowPoints === actualTotal) {
+      playTapSound();
+      setIsShowStepScored(true);
+      setShowCountFeedback({
+        type: 'exact',
+        message:
+          actualTotal === 0
+            ? '✅ Spot on! Nineteen (0 points)!'
+            : `🎯 Spot on! You counted all +${actualTotal} pts!`,
+      });
+      setStatusMessage(`${ownerLabel} pegged +${actualTotal} pts for ${kindLabel}!`);
+      addPoints(activeShowScore.player, actualTotal, `${ownerLabel} ${kindLabel}: +${actualTotal} pts`);
+
+      if (gamePlayMode === 'remote') {
+        multiplayer.send({
+          type: 'CRIBBAGE_ACTION',
+          gameId: 'cribbage',
+          payload: {
+            action: 'SHOW_SCORE_PEGGED',
+            player: activeShowScore.player,
+            points: actualTotal,
+          },
+        });
+      }
+    } else {
+      triggerHaptic('heavy');
+      const diffMsg =
+        claimedShowPoints < actualTotal
+          ? `You counted ${claimedShowPoints} pts — you missed some points! Recount your cards or tap "Reveal & Peg ${actualTotal} pts".`
+          : `Overcount! You claimed ${claimedShowPoints} pts, which is more than this ${kindLabel.toLowerCase()} holds. Recount or tap "Reveal & Peg ${actualTotal} pts".`;
+      setShowCountFeedback({
+        type: 'mismatch',
+        message: diffMsg,
+      });
+    }
+  };
+
+  // Reveal Breakdown & Peg Official Score (Helper for learning or after a miscount)
+  const handleRevealAndPegShowScore = () => {
+    if (!activeShowScore || isShowStepScored) return;
+
+    const actualTotal = activeShowScore.score.total;
+    const ownerLabel = getPlayerLabel(activeShowScore.player);
+    const kindLabel = activeShowScore.isCrib ? 'Crib' : 'Hand';
+
+    playTapSound();
+    setClaimedShowPoints(actualTotal);
+    setIsShowStepScored(true);
+    setShowCountFeedback({
+      type: 'revealed',
+      message: `✨ Breakdown revealed: +${actualTotal} pts pegged for ${ownerLabel}'s ${kindLabel}.`,
+    });
+    setStatusMessage(`${ownerLabel} pegged +${actualTotal} pts for ${kindLabel}.`);
+    addPoints(activeShowScore.player, actualTotal, `${ownerLabel} ${kindLabel}: +${actualTotal} pts`);
+
+    if (gamePlayMode === 'remote') {
+      multiplayer.send({
+        type: 'CRIBBAGE_ACTION',
+        gameId: 'cribbage',
+        payload: {
+          action: 'SHOW_SCORE_PEGGED',
+          player: activeShowScore.player,
+          points: actualTotal,
+        },
+      });
+    }
+  };
 
   const proceedNextShowStep = () => {
     // If walk-off win occurred on the current hand count, close Show card to reveal GameOverModal!
@@ -1035,18 +1337,15 @@ export const Cribbage: React.FC = () => {
 
     if (phase === 'show_non_dealer') {
       // Step 2: Show Dealer Hand
-      setPhase('show_dealer');
       const dealerHand = curDealer === 1 ? handP1 : handP2;
-      const dealerScore = scoreHand(dealerHand, starter, false);
-
-      setActiveShowScore({
-        player: curDealer,
-        title: `${dealerLabel}'s Hand (Dealer Counts Second)`,
-        hand: dealerHand,
-        score: dealerScore,
-      });
-      setStatusMessage(`The Show: ${dealerLabel} counts hand (+${dealerScore.total} pts).`);
-      addPoints(curDealer, dealerScore.total, `${dealerLabel} Hand: +${dealerScore.total} pts`);
+      configureShowStep(
+        'show_dealer',
+        curDealer,
+        `${dealerLabel}'s Hand (Dealer Counts Second)`,
+        dealerHand,
+        starter,
+        false
+      );
 
       if (gamePlayMode === 'remote') {
         multiplayer.send({
@@ -1057,17 +1356,14 @@ export const Cribbage: React.FC = () => {
       }
     } else if (phase === 'show_dealer') {
       // Step 3: Show Dealer Crib
-      setPhase('show_crib');
-      const cribScore = scoreHand(crib, starter, true);
-
-      setActiveShowScore({
-        player: curDealer,
-        title: `${dealerLabel}'s Crib (4 Discards + Starter Cut)`,
-        hand: crib,
-        score: cribScore,
-      });
-      setStatusMessage(`The Show: ${dealerLabel} counts the Crib (+${cribScore.total} pts).`);
-      addPoints(curDealer, cribScore.total, `${dealerLabel} Crib: +${cribScore.total} pts`);
+      configureShowStep(
+        'show_crib',
+        curDealer,
+        `${dealerLabel}'s Crib (4 Discards + Starter Cut)`,
+        crib,
+        starter,
+        true
+      );
 
       if (gamePlayMode === 'remote') {
         multiplayer.send({
@@ -1080,6 +1376,7 @@ export const Cribbage: React.FC = () => {
       // Round Complete
       setPhase('round_complete');
       setActiveShowScore(null);
+      setIsShowStepScored(false);
       const nextD: PlayerNumber = curDealer === 1 ? 2 : 1;
       setStatusMessage(`Round complete! Next round ${getPlayerLabel(nextD)} will be Dealer.`);
 
@@ -1556,21 +1853,30 @@ export const Cribbage: React.FC = () => {
           setHandP1(msg.payload.hostHand);
           setCrib(msg.payload.crib);
           setStarterCut(msg.payload.starterCut);
-          setPhase('show_non_dealer');
 
           const starter = msg.payload.starterCut;
           const curDealer = stateRef.current.dealer;
           const nonDealer: PlayerNumber = curDealer === 1 ? 2 : 1;
           const nonDealerHand = nonDealer === 1 ? msg.payload.hostHand : stateRef.current.handP2;
-          const nonDealerScore = scoreHand(nonDealerHand, starter, false);
-
-          setActiveShowScore({
-            player: nonDealer,
-            title: `${nonDealer === 1 ? 'Player 1' : 'Player 2'} Hand (Non-Dealer)`,
-            hand: nonDealerHand,
-            score: nonDealerScore,
+          configureShowStep(
+            'show_non_dealer',
+            nonDealer,
+            `${nonDealer === 1 ? 'Player 1' : 'Player 2'} Hand (Non-Dealer)`,
+            nonDealerHand,
+            starter,
+            false
+          );
+        } else if (action === 'SHOW_SCORE_PEGGED') {
+          setIsShowStepScored(true);
+          setShowCountFeedback({
+            type: 'exact',
+            message: `Player ${msg.payload.player} pegged +${msg.payload.points} pts!`,
           });
-          addPoints(nonDealer, nonDealerScore.total, `${nonDealer === 1 ? 'P1' : 'P2'} Hand: +${nonDealerScore.total} pts`);
+          addPoints(
+            msg.payload.player,
+            msg.payload.points,
+            `P${msg.payload.player}: +${msg.payload.points} pts`
+          );
         } else if (action === 'SHOW_STEP') {
           const nextP = msg.payload.step as CribbagePhase;
           const starter = stateRef.current.starterCut;
@@ -1578,29 +1884,28 @@ export const Cribbage: React.FC = () => {
           if (!starter) return;
 
           if (nextP === 'show_dealer') {
-            setPhase('show_dealer');
             const dealerHand = curDealer === 1 ? stateRef.current.handP1 : stateRef.current.handP2;
-            const dealerScore = scoreHand(dealerHand, starter, false);
-            setActiveShowScore({
-              player: curDealer,
-              title: `${curDealer === 1 ? 'Player 1' : 'Player 2'} Hand (Dealer)`,
-              hand: dealerHand,
-              score: dealerScore,
-            });
-            addPoints(curDealer, dealerScore.total, `${curDealer === 1 ? 'P1' : 'P2'} Hand: +${dealerScore.total} pts`);
+            configureShowStep(
+              'show_dealer',
+              curDealer,
+              `${curDealer === 1 ? 'Player 1' : 'Player 2'} Hand (Dealer)`,
+              dealerHand,
+              starter,
+              false
+            );
           } else if (nextP === 'show_crib') {
-            setPhase('show_crib');
-            const cribScore = scoreHand(stateRef.current.crib, starter, true);
-            setActiveShowScore({
-              player: curDealer,
-              title: `${curDealer === 1 ? 'Player 1' : 'Player 2'} Crib (The Crib)`,
-              hand: stateRef.current.crib,
-              score: cribScore,
-            });
-            addPoints(curDealer, cribScore.total, `Crib: +${cribScore.total} pts`);
+            configureShowStep(
+              'show_crib',
+              curDealer,
+              `${curDealer === 1 ? 'Player 1' : 'Player 2'} Crib (The Crib)`,
+              stateRef.current.crib,
+              starter,
+              true
+            );
           } else if (nextP === 'round_complete') {
             setPhase('round_complete');
             setActiveShowScore(null);
+            setIsShowStepScored(false);
             setStatusMessage('Round complete! Ready for next deal.');
           }
         } else if (action === 'REQUEST_NEXT_ROUND') {
@@ -1614,7 +1919,7 @@ export const Cribbage: React.FC = () => {
     return () => {
       unbind();
     };
-  }, [gamePlayMode, localPlayer, addPoints, startNewRound, setIsAwaitingServer, scheduleTimeout]);
+  }, [gamePlayMode, localPlayer, addPoints, configureShowStep, startNewRound, setIsAwaitingServer, scheduleTimeout]);
 
   // -------------------------------------------------------------------------
   // Perspective Normalization: Local / Active Player Hand at Bottom
@@ -1657,6 +1962,22 @@ export const Cribbage: React.FC = () => {
     return myPeggingHand.length > 0 && !canPlayerPeg(myPeggingHand, currentRunningCount);
   }, [phase, isMyPeggingTurn, isCycleResetting, myPeggingHand, currentRunningCount]);
 
+  // Sum of selected cards in The Show helper
+  const showSelectedSum = useMemo(() => {
+    if (!activeShowScore || showSelectedCardIds.length === 0) return 0;
+    const allFive = starterCut ? [...activeShowScore.hand, starterCut] : activeShowScore.hand;
+    return allFive
+      .filter((c) => showSelectedCardIds.includes(c.id))
+      .reduce((acc, c) => acc + c.value, 0);
+  }, [activeShowScore, showSelectedCardIds, starterCut]);
+
+  const toggleShowCardSelect = (cardId: string) => {
+    triggerHaptic('light');
+    setShowSelectedCardIds((prev) =>
+      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId]
+    );
+  };
+
   return (
     <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden select-none">
       <GameHeader
@@ -1686,18 +2007,19 @@ export const Cribbage: React.FC = () => {
       />
 
       {/* Main Tabletop Arena */}
-      <main className="flex-1 min-h-0 flex flex-col items-center justify-between p-1.5 sm:p-2.5 overflow-hidden w-full max-w-5xl mx-auto">
-        {/* Top Section: Carved Wooden Cribbage Board */}
-        <div className="w-full shrink-0 flex flex-col items-center">
+      <main className="flex-1 min-h-0 flex flex-col items-center justify-between p-1 sm:p-2 overflow-hidden w-full max-w-5xl mx-auto">
+        {/* Top Section: Carved Wooden Cribbage Board (Always Uncovered!) */}
+        <div className="w-full shrink-0 flex flex-col items-center z-20">
           <WoodenCribbageBoard
             scoreP1={scoreP1}
             prevScoreP1={prevScoreP1}
             scoreP2={scoreP2}
             prevScoreP2={prevScoreP2}
+            isExpanded={isBoardExpanded}
           />
 
-          {/* Real-time Peg Score Bar */}
-          <div className="w-full flex items-center justify-between px-3 py-1 bg-black/65 border border-[#3e444c] rounded-2xl shadow-md text-xs font-black mt-1 gap-2">
+          {/* Real-time Peg Score & Controls Bar */}
+          <div className="w-full flex items-center justify-between px-2.5 py-1 bg-black/70 border border-[#3e444c] rounded-xl sm:rounded-2xl shadow-md text-xs font-black mt-1 gap-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 shadow-sm shrink-0" />
               <span className="text-amber-400 truncate">
@@ -1710,22 +2032,39 @@ export const Cribbage: React.FC = () => {
               )}
             </div>
 
-            {/* Central Callout Banner or Quick Rules Guide Button */}
-            {peggingCallout ? (
-              <div className="px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 text-[10px] sm:text-[11px] font-black uppercase tracking-wider animate-bounce shadow-lg truncate">
-                ✨ {peggingCallout}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowRulesModal(true)}
-                className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-amber-500/20 active:scale-95 text-stone-200 hover:text-amber-300 text-[10px] font-bold border border-white/15 transition-all cursor-pointer shrink-0"
-                title="View Full Rules & Scoring Guide"
-              >
-                <span>📜</span>
-                <span>Rules &amp; Guide</span>
-              </button>
-            )}
+            {/* Central Callout Banner + Board Size & Rules Controls */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {peggingCallout ? (
+                <div className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 text-[10px] sm:text-[11px] font-black uppercase tracking-wider animate-bounce shadow-lg truncate max-w-[180px] sm:max-w-xs">
+                  ✨ {peggingCallout}
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsBoardExpanded((prev) => !prev)}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer shrink-0 ${
+                      isBoardExpanded
+                        ? 'bg-amber-500/25 text-amber-300 border-amber-400/50'
+                        : 'bg-white/10 hover:bg-amber-500/20 text-stone-200 border-white/15'
+                    }`}
+                    title="Toggle Board Zoom Size"
+                  >
+                    <span>🔍</span>
+                    <span>{isBoardExpanded ? 'Standard Board' : 'Larger Board'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRulesModal(true)}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 hover:bg-amber-500/20 active:scale-95 text-stone-200 hover:text-amber-300 text-[10px] font-bold border border-white/15 transition-all cursor-pointer shrink-0"
+                    title="View Full Rules & Scoring Guide"
+                  >
+                    <span>📜</span>
+                    <span>Rules</span>
+                  </button>
+                </>
+              )}
+            </div>
 
             <div className="flex items-center gap-1.5 min-w-0">
               {dealer === 2 && (
@@ -1746,271 +2085,519 @@ export const Cribbage: React.FC = () => {
           </div>
         </div>
 
-        {/* Central Card Table Area */}
-        <div className="flex-1 min-h-0 w-full flex items-center justify-between gap-2 p-1 relative">
-          {/* Left Wing: Dealer's Crib Box */}
-          <div className="flex flex-col items-center p-2 rounded-2xl bg-black/45 border border-white/15 shrink-0 shadow-lg">
-            <span className="text-[10px] font-black text-amber-300 uppercase mb-1">
-              {dealer === 1 ? 'P1 Crib' : gamePlayMode === 'vs-cpu' ? 'CPU Crib' : 'P2 Crib'} ({crib.length}/4)
-            </span>
-            <div className="flex items-center justify-center gap-1">
-              {crib.length === 0 ? (
-                <div className="w-12 h-16 rounded-xl border-2 border-dashed border-amber-400/30 flex items-center justify-center text-[9px] text-amber-200/50 font-bold text-center px-1">
-                  Toss 2 Each
-                </div>
-              ) : phase === 'show_crib' || phase === 'round_complete' ? (
-                <div className="flex -space-x-2">
-                  {crib.map((c) => (
-                    <ProceduralCribbageCard key={c.id} card={c} small />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex -space-x-5">
-                  {crib.map((c) => (
-                    <ProceduralCribbageCard key={c.id} card={c} faceDown small />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Center Play Area: Opponent Rack, Pegging Sequence & Running Count */}
-          <div className="flex-1 flex flex-col items-center justify-between h-full py-1 px-2 min-w-0">
-            {/* Top Opponent Hand Indicator (All Modes) */}
-            <div className="flex items-center gap-1.5 bg-black/35 px-3 py-1 rounded-full border border-white/10">
-              <span className="text-[10px] font-bold text-stone-300 uppercase">
-                {activeHumanPlayer === 1 ? getPlayerLabel(2) : getPlayerLabel(1)}:
+        {/* Lower Tabletop Wrapper (Holds Card Play Area, Player Hand, and Unobstructed Show Scorer) */}
+        <div className="flex-1 min-h-0 w-full flex flex-col justify-between relative mt-1">
+          {/* Central Card Table Area */}
+          <div className="flex-1 min-h-0 w-full flex items-center justify-between gap-2 p-1 relative">
+            {/* Left Wing: Dealer's Crib Box */}
+            <div className="flex flex-col items-center p-2 rounded-2xl bg-black/45 border border-white/15 shrink-0 shadow-lg">
+              <span className="text-[10px] font-black text-amber-300 uppercase mb-1">
+                {dealer === 1 ? 'P1 Crib' : gamePlayMode === 'vs-cpu' ? 'CPU Crib' : 'P2 Crib'} ({crib.length}/4)
               </span>
-              {opponentUnplayedCount > 0 ? (
-                <div className="flex -space-x-2">
-                  {Array.from({ length: opponentUnplayedCount }).map((_, i) => (
-                    <ProceduralCribbageCard
-                      key={`opp-card-${i}`}
-                      card={{ id: `opp-${i}`, suit: 'spades', rank: 1, value: 1, rankLabel: 'A', isRed: false }}
-                      faceDown
-                      tiny
-                    />
-                  ))}
-                </div>
-              ) : (
-                <span className="text-[10px] font-bold text-stone-400 italic">0 cards left</span>
-              )}
-              {phase === 'pegging' && (p1SaidGo || p2SaidGo) && (
-                <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-[9px] font-black uppercase">
-                  {p1SaidGo ? 'P1 Said GO' : `${getPlayerLabel(2)} Said GO`}
-                </span>
-              )}
-            </div>
-
-            {/* Active Phase Centerpiece */}
-            {phase === 'pegging' && (
-              <div className="flex flex-col items-center gap-1.5 my-auto w-full">
-                {/* 31 Count Dial Badge */}
-                <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-black/80 border-2 border-amber-500/60 text-white shadow-xl">
-                  <span className="text-[11px] text-amber-400 font-extrabold uppercase tracking-wider">
-                    RUNNING COUNT:
-                  </span>
-                  <span className="text-lg sm:text-xl font-black text-amber-300 tabular-nums">
-                    {currentRunningCount}
-                  </span>
-                  <span className="text-xs text-stone-400 font-bold">/ 31</span>
-                </div>
-
-                {/* Beginner Pegging Points Quick Reference */}
-                <div className="text-[9px] sm:text-[10px] font-bold text-amber-100/80 bg-black/35 px-2.5 py-0.5 rounded-full tracking-tight text-center">
-                  15 = +2 • 31 = +2 • Pair = +2 • 3-Kind = +6 • Run (3+) = 1/card • Go/Last = +1
-                </div>
-
-                {/* Cards played in this 31 cycle */}
-                <div className="flex items-center justify-center gap-1.5 flex-wrap min-h-18 py-1 px-2 rounded-2xl bg-black/25 border border-white/10 w-full max-w-md">
-                  {activeCycleSequence.length === 0 ? (
-                    <span className="text-xs font-bold text-stone-400/80 italic">
-                      {isCycleResetting
-                        ? 'Resetting count to 0...'
-                        : `${getPlayerLabel(turn)}: play a card to start the count`}
-                    </span>
-                  ) : (
-                    activeCycleSequence.map((c, idx) => (
-                      <div key={`${c.id}-${idx}`} className="flex flex-col items-center">
-                        <ProceduralCribbageCard card={c} small />
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Previously Pegged Cards in Earlier Series (Dimmed Reference) */}
-                {peggingHistory.length > activeCycleSequence.length && (
-                  <div className="flex items-center gap-1 text-[9px] font-bold text-stone-300/75">
-                    <span>Earlier in round:</span>
-                    <span>
-                      {peggingHistory
-                        .slice(0, peggingHistory.length - activeCycleSequence.length)
-                        .map((h) => `${h.card.rankLabel}${SUIT_SYMBOLS[h.card.suit]}`)
-                        .join(', ')}
-                    </span>
+              <div className="flex items-center justify-center gap-1">
+                {crib.length === 0 ? (
+                  <div className="w-12 h-16 rounded-xl border-2 border-dashed border-amber-400/30 flex items-center justify-center text-[9px] text-amber-200/50 font-bold text-center px-1">
+                    Toss 2 Each
+                  </div>
+                ) : phase === 'show_crib' || phase === 'round_complete' ? (
+                  <div className="flex -space-x-2">
+                    {crib.map((c) => (
+                      <ProceduralCribbageCard key={c.id} card={c} small />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex -space-x-5">
+                    {crib.map((c) => (
+                      <ProceduralCribbageCard key={c.id} card={c} faceDown small />
+                    ))}
                   </div>
                 )}
-
-                {/* "Say GO" Action Button when player has no legal card <= 31 */}
-                {canISayGo && (
-                  <button
-                    type="button"
-                    onClick={handleDeclareGo}
-                    className="mt-0.5 px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-xs uppercase tracking-wider shadow-xl active:scale-95 animate-pulse transition-all cursor-pointer border border-rose-300/40"
-                  >
-                    📢 Say &ldquo;GO&rdquo; (No Card Fits ≤ {31 - currentRunningCount})
-                  </button>
-                )}
               </div>
-            )}
+            </div>
 
-            {/* Cut Reveal Banner */}
-            {phase === 'cut_reveal' && starterCut && (
-              <div className="flex flex-col items-center gap-2 my-auto bg-black/65 px-5 py-3 rounded-2xl border border-amber-400/40 shadow-xl animate-fade-in">
-                <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
-                  Deck Cut Starter Card
+            {/* Center Play Area: Opponent Rack, Pegging Sequence & Running Count */}
+            <div className="flex-1 flex flex-col items-center justify-between h-full py-1 px-2 min-w-0">
+              {/* Top Opponent Hand Indicator (All Modes) */}
+              <div className="flex items-center gap-1.5 bg-black/35 px-3 py-1 rounded-full border border-white/10">
+                <span className="text-[10px] font-bold text-stone-300 uppercase">
+                  {activeHumanPlayer === 1 ? getPlayerLabel(2) : getPlayerLabel(1)}:
                 </span>
-                <ProceduralCribbageCard card={starterCut} />
-                {checkHisHeels(starterCut) && (
-                  <span className="text-xs font-black text-emerald-400 animate-bounce">
-                    🎉 Two for His Heels! (+2 pts to {getPlayerLabel(dealer)})
+                {opponentUnplayedCount > 0 ? (
+                  <div className="flex -space-x-2">
+                    {Array.from({ length: opponentUnplayedCount }).map((_, i) => (
+                      <ProceduralCribbageCard
+                        key={`opp-card-${i}`}
+                        card={{ id: `opp-${i}`, suit: 'spades', rank: 1, value: 1, rankLabel: 'A', isRed: false }}
+                        faceDown
+                        tiny
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[10px] font-bold text-stone-400 italic">0 cards left</span>
+                )}
+                {phase === 'pegging' && (p1SaidGo || p2SaidGo) && (
+                  <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-[9px] font-black uppercase">
+                    {p1SaidGo ? 'P1 Said GO' : `${getPlayerLabel(2)} Said GO`}
                   </span>
                 )}
               </div>
-            )}
 
-            {/* Discard Phase Action Box */}
-            {phase === 'discarding' && (
-              <div className="flex flex-col items-center gap-1.5 my-auto bg-black/55 px-4 py-2.5 rounded-2xl border border-white/15 text-center shadow-xl max-w-sm">
-                <span className="text-xs sm:text-sm font-black text-amber-200">
-                  {getPlayerLabel(activeHumanPlayer)}: Toss 2 Cards to{' '}
-                  {dealer === activeHumanPlayer ? 'YOUR Crib' : `${getPlayerLabel(dealer)}'s Crib`}
-                </span>
-                <span className="text-[10px] text-stone-300 font-medium leading-snug">
-                  {dealer === activeHumanPlayer
-                    ? '💡 You are Dealer! Toss 5s, pairs, or consecutive cards to boost your own Crib.'
-                    : "💡 Opponent is Dealer! Toss wide-gapped cards (like K + 2 or Q + 3) to balk their Crib."}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleConfirmDiscards()}
-                  disabled={selectedDiscards.length !== 2 || (activeHumanPlayer === 1 ? p1DiscardReady : p2DiscardReady)}
-                  className="mt-1 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider shadow-xl active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-                >
-                  Toss Selected to Crib ({selectedDiscards.length}/2)
-                </button>
-              </div>
-            )}
+              {/* Active Phase Centerpiece */}
+              {phase === 'pegging' && (
+                <div className="flex flex-col items-center gap-1.5 my-auto w-full">
+                  {/* 31 Count Dial Badge */}
+                  <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-black/80 border-2 border-amber-500/60 text-white shadow-xl">
+                    <span className="text-[11px] text-amber-400 font-extrabold uppercase tracking-wider">
+                      RUNNING COUNT:
+                    </span>
+                    <span className="text-lg sm:text-xl font-black text-amber-300 tabular-nums">
+                      {currentRunningCount}
+                    </span>
+                    <span className="text-xs text-stone-400 font-bold">/ 31</span>
+                  </div>
 
-            {/* Round Complete Center Action */}
-            {phase === 'round_complete' && (
-              <div className="flex flex-col items-center gap-2 my-auto bg-black/65 px-6 py-4 rounded-3xl border border-emerald-500/40 shadow-2xl">
-                <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
-                  Hand &amp; Crib Counting Complete
-                </span>
-                <span className="text-xs text-stone-300">
-                  Score: P1 {scoreP1} pts — {getPlayerLabel(2)} {scoreP2} pts
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (gamePlayMode === 'remote' && localPlayer !== 1) {
-                      multiplayer.send({
-                        type: 'CRIBBAGE_ACTION',
-                        gameId: 'cribbage',
-                        payload: { action: 'REQUEST_NEXT_ROUND' },
-                      });
-                    } else {
-                      startNewRound();
-                    }
-                  }}
-                  className="mt-1 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer"
-                >
-                  🔀 Deal Next Round ({getPlayerLabel(dealer === 1 ? 2 : 1)} Deals)
-                </button>
-              </div>
-            )}
+                  {/* Beginner Pegging Points Quick Reference */}
+                  <div className="text-[9px] sm:text-[10px] font-bold text-amber-100/80 bg-black/35 px-2.5 py-0.5 rounded-full tracking-tight text-center">
+                    15 = +2 • 31 = +2 • Pair = +2 • 3-Kind = +6 • Run (3+) = 1/card • Go/Last = +1
+                  </div>
+
+                  {/* Cards played in this 31 cycle */}
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap min-h-18 py-1 px-2 rounded-2xl bg-black/25 border border-white/10 w-full max-w-md">
+                    {activeCycleSequence.length === 0 ? (
+                      <span className="text-xs font-bold text-stone-400/80 italic">
+                        {isCycleResetting
+                          ? 'Resetting count to 0...'
+                          : `${getPlayerLabel(turn)}: play a card to start the count`}
+                      </span>
+                    ) : (
+                      activeCycleSequence.map((c, idx) => (
+                        <div key={`${c.id}-${idx}`} className="flex flex-col items-center">
+                          <ProceduralCribbageCard card={c} small />
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Previously Pegged Cards in Earlier Series (Dimmed Reference) */}
+                  {peggingHistory.length > activeCycleSequence.length && (
+                    <div className="flex items-center gap-1 text-[9px] font-bold text-stone-300/75">
+                      <span>Earlier in round:</span>
+                      <span>
+                        {peggingHistory
+                          .slice(0, peggingHistory.length - activeCycleSequence.length)
+                          .map((h) => `${h.card.rankLabel}${SUIT_SYMBOLS[h.card.suit]}`)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* "Say GO" Action Button when player has no legal card <= 31 */}
+                  {canISayGo && (
+                    <button
+                      type="button"
+                      onClick={handleDeclareGo}
+                      className="mt-0.5 px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-black text-xs uppercase tracking-wider shadow-xl active:scale-95 animate-pulse transition-all cursor-pointer border border-rose-300/40"
+                    >
+                      📢 Say &ldquo;GO&rdquo; (No Card Fits ≤ {31 - currentRunningCount})
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Cut Reveal Banner */}
+              {phase === 'cut_reveal' && starterCut && (
+                <div className="flex flex-col items-center gap-2 my-auto bg-black/65 px-5 py-3 rounded-2xl border border-amber-400/40 shadow-xl animate-fade-in">
+                  <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
+                    Deck Cut Starter Card
+                  </span>
+                  <ProceduralCribbageCard card={starterCut} />
+                  {checkHisHeels(starterCut) && (
+                    <span className="text-xs font-black text-emerald-400 animate-bounce">
+                      🎉 Two for His Heels! (+2 pts to {getPlayerLabel(dealer)})
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Discard Phase Action Box */}
+              {phase === 'discarding' && (
+                <div className="flex flex-col items-center gap-1.5 my-auto bg-black/55 px-4 py-2.5 rounded-2xl border border-white/15 text-center shadow-xl max-w-sm">
+                  <span className="text-xs sm:text-sm font-black text-amber-200">
+                    {getPlayerLabel(activeHumanPlayer)}: Toss 2 Cards to{' '}
+                    {dealer === activeHumanPlayer ? 'YOUR Crib' : `${getPlayerLabel(dealer)}'s Crib`}
+                  </span>
+                  <span className="text-[10px] text-stone-300 font-medium leading-snug">
+                    {dealer === activeHumanPlayer
+                      ? '💡 You are Dealer! Toss 5s, pairs, or consecutive cards to boost your own Crib.'
+                      : "💡 Opponent is Dealer! Toss wide-gapped cards (like K + 2 or Q + 3) to balk their Crib."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmDiscards()}
+                    disabled={selectedDiscards.length !== 2 || (activeHumanPlayer === 1 ? p1DiscardReady : p2DiscardReady)}
+                    className="mt-1 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider shadow-xl active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                  >
+                    Toss Selected to Crib ({selectedDiscards.length}/2)
+                  </button>
+                </div>
+              )}
+
+              {/* Round Complete Center Action */}
+              {phase === 'round_complete' && (
+                <div className="flex flex-col items-center gap-2 my-auto bg-black/65 px-6 py-4 rounded-3xl border border-emerald-500/40 shadow-2xl">
+                  <span className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                    Hand &amp; Crib Counting Complete
+                  </span>
+                  <span className="text-xs text-stone-300">
+                    Score: P1 {scoreP1} pts — {getPlayerLabel(2)} {scoreP2} pts
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (gamePlayMode === 'remote' && localPlayer !== 1) {
+                        multiplayer.send({
+                          type: 'CRIBBAGE_ACTION',
+                          gameId: 'cribbage',
+                          payload: { action: 'REQUEST_NEXT_ROUND' },
+                        });
+                      } else {
+                        startNewRound();
+                      }
+                    }}
+                    className="mt-1 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer"
+                  >
+                    🔀 Deal Next Round ({getPlayerLabel(dealer === 1 ? 2 : 1)} Deals)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right Wing: Starter Cut Card Riser */}
+            <div className="flex flex-col items-center p-2 rounded-2xl bg-black/45 border border-white/15 shrink-0 shadow-lg">
+              <span className="text-[10px] font-black text-amber-300 uppercase mb-1">
+                Starter Cut
+              </span>
+              {starterCut && phase !== 'dealing' && phase !== 'discarding' ? (
+                <div className="relative transform hover:scale-105 transition-transform">
+                  <div className="absolute -bottom-1 -right-1 w-full h-full rounded-xl bg-slate-900 border border-indigo-500/20 shadow-lg -z-10" />
+                  <ProceduralCribbageCard card={starterCut} small />
+                </div>
+              ) : (
+                <div className="w-12 h-16 rounded-xl border-2 border-dashed border-amber-400/30 flex items-center justify-center text-[9px] text-amber-200/50 font-bold text-center px-1">
+                  Cut After Crib
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Right Wing: Starter Cut Card Riser */}
-          <div className="flex flex-col items-center p-2 rounded-2xl bg-black/45 border border-white/15 shrink-0 shadow-lg">
-            <span className="text-[10px] font-black text-amber-300 uppercase mb-1">
-              Starter Cut
-            </span>
-            {starterCut && phase !== 'dealing' && phase !== 'discarding' ? (
-              <div className="relative transform hover:scale-105 transition-transform">
-                <div className="absolute -bottom-1 -right-1 w-full h-full rounded-xl bg-slate-900 border border-indigo-500/20 shadow-lg -z-10" />
-                <ProceduralCribbageCard card={starterCut} small />
-              </div>
-            ) : (
-              <div className="w-12 h-16 rounded-xl border-2 border-dashed border-amber-400/30 flex items-center justify-center text-[9px] text-amber-200/50 font-bold text-center px-1">
-                Cut After Crib
-              </div>
-            )}
-          </div>
-        </div>
+          {/* Bottom Section: Active Player Hand & Controls */}
+          <div className="w-full flex flex-col items-center shrink-0 px-3 py-1.5 bg-black/50 border border-white/15 rounded-2xl shadow-lg">
+            <div className="w-full flex items-center justify-between text-xs font-bold text-stone-200 mb-1 px-1">
+              <span>
+                {getPlayerLabel(activeHumanPlayer)}&apos;s Hand (
+                {phase === 'pegging' ? `${myPeggingHand.length} unplayed` : `${myCurrentHand.length} cards`})
+              </span>
+              {phase === 'discarding' && (
+                <span className="text-amber-300 font-black">
+                  Tap 2 cards to select ({selectedDiscards.length}/2)
+                </span>
+              )}
+              {phase === 'pegging' && isMyPeggingTurn && !canISayGo && (
+                <span className="text-emerald-400 font-black animate-pulse">
+                  Tap a green-bordered card to play (≤ {31 - currentRunningCount} pts)
+                </span>
+              )}
+              {phase === 'pegging' && !isMyPeggingTurn && (
+                <span className="text-amber-300 font-bold">
+                  Waiting for {getPlayerLabel(turn)}...
+                </span>
+              )}
+            </div>
 
-        {/* Bottom Section: Active Player Hand & Controls */}
-        <div className="w-full flex flex-col items-center shrink-0 px-3 py-1.5 bg-black/50 border border-white/15 rounded-2xl shadow-lg">
-          <div className="w-full flex items-center justify-between text-xs font-bold text-stone-200 mb-1 px-1">
-            <span>
-              {getPlayerLabel(activeHumanPlayer)}&apos;s Hand (
-              {phase === 'pegging' ? `${myPeggingHand.length} unplayed` : `${myCurrentHand.length} cards`})
-            </span>
-            {phase === 'discarding' && (
-              <span className="text-amber-300 font-black">
-                Tap 2 cards to select ({selectedDiscards.length}/2)
-              </span>
-            )}
-            {phase === 'pegging' && isMyPeggingTurn && !canISayGo && (
-              <span className="text-emerald-400 font-black animate-pulse">
-                Tap a green-bordered card to play (≤ {31 - currentRunningCount} pts)
-              </span>
-            )}
-            {phase === 'pegging' && !isMyPeggingTurn && (
-              <span className="text-amber-300 font-bold">
-                Waiting for {getPlayerLabel(turn)}...
-              </span>
-            )}
+            {/* Card Carousel Rack */}
+            <div className="w-full flex items-center justify-center gap-2 sm:gap-3 overflow-x-auto py-1.5 min-h-22">
+              {phase === 'pegging' ? (
+                myPeggingHand.length > 0 ? (
+                  myPeggingHand.map((c) => {
+                    const canPeg = currentRunningCount + c.value <= 31;
+                    return (
+                      <ProceduralCribbageCard
+                        key={c.id}
+                        card={c}
+                        isPlayable={isMyPeggingTurn && canPeg}
+                        isDimmed={!isMyPeggingTurn || !canPeg}
+                        onClick={isMyPeggingTurn && canPeg ? () => handlePlayPeggingCard(c) : undefined}
+                      />
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center gap-2 py-2 text-xs font-bold text-stone-300">
+                    <span>All 4 hand cards played in pegging — kept for The Show:</span>
+                    <div className="flex gap-1 opacity-75">
+                      {myCurrentHand.map((c) => (
+                        <ProceduralCribbageCard key={c.id} card={c} tiny />
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : (
+                myCurrentHand.map((c) => (
+                  <ProceduralCribbageCard
+                    key={c.id}
+                    card={c}
+                    isSelected={selectedDiscards.includes(c.id)}
+                    onClick={phase === 'discarding' ? () => handleToggleDiscardSelection(c.id) : undefined}
+                  />
+                ))
+              )}
+            </div>
           </div>
 
-          {/* Card Carousel Rack */}
-          <div className="w-full flex items-center justify-center gap-2 sm:gap-3 overflow-x-auto py-1.5 min-h-22">
-            {phase === 'pegging' ? (
-              myPeggingHand.length > 0 ? (
-                myPeggingHand.map((c) => {
-                  const canPeg = currentRunningCount + c.value <= 31;
-                  return (
+          {/* The Show Interactive Hand & Crib Scoring Overlay (Strictly inside lower tabletop so Board above is 100% visible!) */}
+          {activeShowScore && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center p-1.5 sm:p-2.5 bg-black/80 backdrop-blur-sm rounded-2xl animate-fade-in select-none">
+              <div className="w-full max-w-md bg-stone-900 border-2 border-amber-500/70 rounded-3xl p-3 sm:p-4 shadow-2xl flex flex-col items-center max-h-full overflow-y-auto">
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">
+                    {phase === 'show_non_dealer'
+                      ? 'Step 1 of 3 • Non-Dealer First'
+                      : phase === 'show_dealer'
+                      ? 'Step 2 of 3 • Dealer Hand'
+                      : 'Step 3 of 3 • Dealer Crib'}
+                  </span>
+                  <span className="text-xs font-black text-amber-300">
+                    {isShowStepScored
+                      ? `Pegged: +${activeShowScore.score.total} pts`
+                      : `Count Your ${activeShowScore.isCrib ? 'Crib' : 'Hand'}`}
+                  </span>
+                </div>
+
+                <h2 className="text-xs sm:text-sm font-black text-white uppercase tracking-wide mb-1.5 text-center">
+                  🏆 {activeShowScore.title}
+                </h2>
+
+                {/* 4 Hand Cards + 1 Starter Cut Card (Tappable to inspect sums!) */}
+                <div className="flex items-center justify-center gap-1.5 my-1 bg-black/45 px-2.5 py-2 rounded-2xl border border-white/10">
+                  {activeShowScore.hand.map((c) => (
                     <ProceduralCribbageCard
                       key={c.id}
                       card={c}
-                      isPlayable={isMyPeggingTurn && canPeg}
-                      isDimmed={!isMyPeggingTurn || !canPeg}
-                      onClick={isMyPeggingTurn && canPeg ? () => handlePlayPeggingCard(c) : undefined}
+                      small
+                      isSelected={showSelectedCardIds.includes(c.id)}
+                      onClick={!isShowStepScored ? () => toggleShowCardSelect(c.id) : undefined}
                     />
-                  );
-                })
-              ) : (
-                <div className="flex items-center gap-2 py-2 text-xs font-bold text-stone-300">
-                  <span>All 4 hand cards played in pegging — kept for The Show:</span>
-                  <div className="flex gap-1 opacity-75">
-                    {myCurrentHand.map((c) => (
-                      <ProceduralCribbageCard key={c.id} card={c} tiny />
-                    ))}
-                  </div>
+                  ))}
+                  {starterCut && (
+                    <div className="pl-2 ml-1 border-l-2 border-amber-400/40 flex flex-col items-center">
+                      <ProceduralCribbageCard
+                        card={starterCut}
+                        small
+                        isSelected={showSelectedCardIds.includes(starterCut.id)}
+                        onClick={!isShowStepScored ? () => toggleShowCardSelect(starterCut.id) : undefined}
+                      />
+                      <span className="text-[8px] font-black text-amber-300 uppercase mt-0.5">CUT</span>
+                    </div>
+                  )}
                 </div>
-              )
-            ) : (
-              myCurrentHand.map((c) => (
-                <ProceduralCribbageCard
-                  key={c.id}
-                  card={c}
-                  isSelected={selectedDiscards.includes(c.id)}
-                  onClick={phase === 'discarding' ? () => handleToggleDiscardSelection(c.id) : undefined}
-                />
-              ))
-            )}
-          </div>
+
+                {/* Live Sum Helper when tapping cards */}
+                {!isShowStepScored && showSelectedCardIds.length > 0 && (
+                  <div className="text-[10px] font-bold text-amber-300 mb-1">
+                    Selected Cards Sum:{' '}
+                    <span className={showSelectedSum === 15 ? 'text-emerald-400 font-black' : 'text-white'}>
+                      {showSelectedSum} {showSelectedSum === 15 ? '✨ (Fifteen for +2!)' : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Feedback Banner */}
+                {showCountFeedback && (
+                  <div
+                    className={`w-full text-center px-3 py-1.5 rounded-xl text-[11px] font-bold my-1 border ${
+                      showCountFeedback.type === 'exact'
+                        ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300'
+                        : showCountFeedback.type === 'revealed'
+                        ? 'bg-amber-950/70 border-amber-500/50 text-amber-200'
+                        : 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+                    }`}
+                  >
+                    {showCountFeedback.message}
+                  </div>
+                )}
+
+                {!isShowStepScored ? (
+                  /* HUMAN PLAYER INTERACTIVE SCORING PAD */
+                  <div className="w-full flex flex-col gap-2 my-1">
+                    {/* Quick Combo Add Buttons */}
+                    <div className="grid grid-cols-3 gap-1.5 w-full">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 2);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +2 (Fifteen)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 2);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +2 (Pair)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 3);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +3 (Run of 3)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 4);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +4 (Run/Flush)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 5);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +5 (Run/Flush)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setClaimedShowPoints((p) => p + 1);
+                        }}
+                        className="py-1.5 px-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                      >
+                        +1 (His Nobs)
+                      </button>
+                    </div>
+
+                    {/* Fine-Tune Tally Stepper Row */}
+                    <div className="flex items-center justify-between bg-black/55 px-3 py-1.5 rounded-2xl border border-white/10">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setClaimedShowPoints((p) => Math.max(0, p - 2))}
+                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-200 font-black text-xs active:scale-95 cursor-pointer"
+                        >
+                          -2
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClaimedShowPoints((p) => Math.max(0, p - 1))}
+                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-200 font-black text-xs active:scale-95 cursor-pointer"
+                        >
+                          -1
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col items-center">
+                        <span className="text-[9px] uppercase font-bold text-stone-400">Your Count</span>
+                        <span className="text-base sm:text-lg font-black text-amber-300 tabular-nums">
+                          {claimedShowPoints} pts
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setClaimedShowPoints((p) => p + 1)}
+                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-stone-200 font-black text-xs active:scale-95 cursor-pointer"
+                        >
+                          +1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClaimedShowPoints(0)}
+                          className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-[10px] uppercase active:scale-95 cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Submit Claimed Points or Auto-Reveal */}
+                    <div className="flex items-center gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={handleSubmitHumanShowScore}
+                        className="flex-1 py-2.5 px-3 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer"
+                      >
+                        📌 Peg {claimedShowPoints} {claimedShowPoints === 1 ? 'Point' : 'Points'}
+                        {claimedShowPoints === 0 ? ' (19!)' : ''}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRevealAndPegShowScore}
+                        className="py-2.5 px-3 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-stone-200 font-bold text-[11px] active:scale-95 transition-all cursor-pointer shrink-0"
+                        title="Show official breakdown and peg points"
+                      >
+                        {showCountFeedback?.type === 'mismatch'
+                          ? `✨ Peg ${activeShowScore.score.total} pts`
+                          : '💡 Auto-Count'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* VERIFIED ITEMIZED POINTS BREAKDOWN & NEXT STEP */
+                  <>
+                    <div className="w-full bg-black/55 rounded-2xl p-2.5 my-1.5 border border-white/10 max-h-32 overflow-y-auto flex flex-col gap-1 text-xs">
+                      {activeShowScore.score.items.length === 0 ? (
+                        <div className="text-center text-stone-400 py-2 font-bold">
+                          Nineteen / zero combinations found (0 points).
+                        </div>
+                      ) : (
+                        activeShowScore.score.items.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-stone-200 py-0.5 border-b border-white/5 last:border-b-0"
+                          >
+                            <span className="truncate pr-2">{item.description}</span>
+                            <span className="font-black text-amber-400 shrink-0">+{item.points} pts</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={proceedNextShowStep}
+                      className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer mt-1"
+                    >
+                      {winner !== null
+                        ? `🏆 121+ Reached! View Match Victory ➜`
+                        : phase === 'show_non_dealer'
+                        ? `Count Dealer's Hand (${getPlayerLabel(dealer)}) ➜`
+                        : phase === 'show_dealer'
+                        ? `Count ${getPlayerLabel(dealer)}'s Crib ➜`
+                        : 'Finish Round ➜'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -2022,77 +2609,6 @@ export const Cribbage: React.FC = () => {
           gameMode={gamePlayMode}
           onReady={() => setPassPhonePlayer(null)}
         />
-      )}
-
-      {/* The Show Itemized Scorecard Overlay (Positioned to keep top Cribbage Board visible!) */}
-      {activeShowScore && (
-        <div className="fixed inset-x-0 bottom-0 top-36 sm:top-44 z-40 flex items-center justify-center p-3 bg-black/75 backdrop-blur-sm animate-fade-in select-none">
-          <div className="w-full max-w-md bg-stone-900 border-2 border-amber-500/70 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col items-center max-h-full overflow-hidden">
-            <div className="flex items-center justify-between w-full mb-1.5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/80">
-                {phase === 'show_non_dealer'
-                  ? 'Step 1 of 3 • Non-Dealer First'
-                  : phase === 'show_dealer'
-                  ? 'Step 2 of 3 • Dealer Hand'
-                  : 'Step 3 of 3 • Dealer Crib'}
-              </span>
-              <span className="text-xs font-black text-amber-300">
-                +{activeShowScore.score.total} pts
-              </span>
-            </div>
-
-            <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-wide mb-2 text-center">
-              🏆 {activeShowScore.title}
-            </h2>
-
-            {/* 4 Hand Cards + 1 Starter Cut Card */}
-            <div className="flex items-center justify-center gap-1.5 my-1.5 bg-black/40 px-3 py-2 rounded-2xl border border-white/10">
-              {activeShowScore.hand.map((c) => (
-                <ProceduralCribbageCard key={c.id} card={c} small />
-              ))}
-              {starterCut && (
-                <div className="pl-2 ml-1 border-l-2 border-amber-400/40 flex flex-col items-center">
-                  <ProceduralCribbageCard card={starterCut} small />
-                  <span className="text-[8px] font-black text-amber-300 uppercase mt-0.5">CUT</span>
-                </div>
-              )}
-            </div>
-
-            {/* Itemized Points Breakdown */}
-            <div className="w-full bg-black/55 rounded-2xl p-2.5 my-2 border border-white/10 max-h-36 overflow-y-auto flex flex-col gap-1 text-xs">
-              {activeShowScore.score.items.length === 0 ? (
-                <div className="text-center text-stone-400 py-2 font-bold">
-                  nineteen / zero combinations found (0 points).
-                </div>
-              ) : (
-                activeShowScore.score.items.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between text-stone-200 py-0.5 border-b border-white/5 last:border-b-0"
-                  >
-                    <span className="truncate pr-2">{item.description}</span>
-                    <span className="font-black text-amber-400 shrink-0">+{item.points} pts</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Continue / Walk-off Victory Button */}
-            <button
-              type="button"
-              onClick={proceedNextShowStep}
-              className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 text-stone-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl active:scale-95 transition-all cursor-pointer mt-1"
-            >
-              {winner !== null
-                ? `🏆 121+ Reached! View Match Victory ➜`
-                : phase === 'show_non_dealer'
-                ? `Count Dealer's Hand (${getPlayerLabel(dealer)}) ➜`
-                : phase === 'show_dealer'
-                ? `Count ${getPlayerLabel(dealer)}'s Crib ➜`
-                : 'Finish Round ➜'}
-            </button>
-          </div>
-        </div>
       )}
 
       {/* Game Over Modal (121 Points Terminal Win - shown once Show modal is closed) */}
