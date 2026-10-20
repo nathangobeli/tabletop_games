@@ -1,11 +1,34 @@
 // Pure Web Audio API & Safe Haptic feedback utility
 
-export type HapticType = 'light' | 'medium' | 'success';
+export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
 
 let audioCtx: AudioContext | null = null;
 
+const getInitialFeedbackEnabled = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const saved = localStorage.getItem('tabletop_feedback_enabled');
+    return saved !== null ? saved === 'true' : true;
+  } catch {
+    return true;
+  }
+};
+
+let feedbackEnabled = getInitialFeedbackEnabled();
+
+export const isFeedbackEnabled = (): boolean => feedbackEnabled;
+
+export const setFeedbackEnabled = (enabled: boolean): void => {
+  feedbackEnabled = enabled;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('tabletop_feedback_enabled', String(enabled));
+    } catch {}
+  }
+};
+
 const getAudioContext = (): AudioContext | null => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !feedbackEnabled) return null;
   if (!audioCtx) {
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (AudioContextClass) {
@@ -22,7 +45,7 @@ const getAudioContext = (): AudioContext | null => {
  * Safe Vibration API helper with standard guards
  */
 export const triggerHaptic = (type: HapticType = 'light'): void => {
-  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
+  if (typeof window === 'undefined' || !feedbackEnabled || !('vibrate' in navigator)) return;
 
   try {
     switch (type) {
@@ -32,8 +55,17 @@ export const triggerHaptic = (type: HapticType = 'light'): void => {
       case 'medium':
         navigator.vibrate(30);
         break;
+      case 'heavy':
+        navigator.vibrate(45);
+        break;
       case 'success':
         navigator.vibrate([30, 50, 60]);
+        break;
+      case 'warning':
+        navigator.vibrate([25, 40, 25]);
+        break;
+      case 'error':
+        navigator.vibrate([40, 30, 40, 30, 50]);
         break;
     }
   } catch {
@@ -49,7 +81,7 @@ export const triggerHaptic = (type: HapticType = 'light'): void => {
  * - Heavy smashes (> 70% maxSpeed): Punchy multi-pulse [25ms, 15ms, 35ms]
  */
 export const triggerCollisionHaptic = (speed: number, maxSpeed = 15): void => {
-  if (typeof window === 'undefined' || !('vibrate' in navigator)) return;
+  if (typeof window === 'undefined' || !feedbackEnabled || !('vibrate' in navigator)) return;
 
   const ratio = Math.max(0, Math.min(speed / maxSpeed, 1));
   if (ratio < 0.1) return; // Discard micro-collisions / rest contacts

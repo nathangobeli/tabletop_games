@@ -1,8 +1,10 @@
+import { fileURLToPath } from 'node:url';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    fileURLToPath(new URL('./index.html', import.meta.url)),
+    fileURLToPath(new URL('./src/**/*.{js,ts,jsx,tsx}', import.meta.url)),
   ],
   theme: {
     extend: {

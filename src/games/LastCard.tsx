@@ -140,10 +140,12 @@ export const LastCardGraphic: React.FC<{
 };
 
 export const LastCard: React.FC = () => {
-  const { setGameStatus, resetToMenu, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, setIsCpuThinking, gameMode: ctxGameMode } = useGame();
 
   // Mode and Modals
-  const [gamePlayMode, setGamePlayMode] = useState<GamePlayMode>('vs-cpu');
+  const [gamePlayMode, setGamePlayMode] = useState<GamePlayMode>(
+    ctxGameMode === 'pvp' ? 'pass-and-play' : 'vs-cpu'
+  );
   const [showRemoteModal, setShowRemoteModal] = useState<boolean>(false);
 
   const [drawPile, setDrawPile] = useState<LastCardItem[]>([]);
@@ -153,7 +155,7 @@ export const LastCard: React.FC = () => {
 
   // Remote Masked Opponent Tracking
   const [remoteOpponentCardCount, setRemoteOpponentCardCount] = useState<number>(7);
-  const [remoteRevealedOpponentCards, setRemoteRevealedOpponentCards] = useState<LastCardItem[] | null>(null);
+  const [, setRemoteRevealedOpponentCards] = useState<LastCardItem[] | null>(null);
 
   const [turn, setTurn] = useState<PlayerNumber>(1);
   const [activeSuit, setActiveSuit] = useState<Suit>('spades');
@@ -436,7 +438,7 @@ export const LastCard: React.FC = () => {
   // Play Card Handler
   const handlePlayCard = (card: LastCardItem) => {
     if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
-    if (gamePlayMode === 'pve' && turn === 2) return;
+    if (gamePlayMode === 'vs-cpu' && turn === 2) return;
 
     const hadTwoCards = myHand.length === 2;
     const isCalled = (gamePlayMode === 'remote' ? localPlayer === 1 : turn === 1)
@@ -455,7 +457,7 @@ export const LastCard: React.FC = () => {
   // Draw Card Action
   const handleDrawButton = () => {
     if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
-    if (gamePlayMode === 'pve' && turn === 2) return;
+    if (gamePlayMode === 'vs-cpu' && turn === 2) return;
 
     if (gamePlayMode === 'remote') {
       setIsAwaitingServer(true);
@@ -526,7 +528,7 @@ export const LastCard: React.FC = () => {
   // Toggle "LAST CARD" Callout
   const handleToggleLastCard = () => {
     if (gamePlayMode === 'remote' && (!isMyTurn || isAwaitingServer)) return;
-    if (gamePlayMode === 'pve' && turn === 2) return;
+    if (gamePlayMode === 'vs-cpu' && turn === 2) return;
 
     triggerHaptic('success');
     playCaptureSound();
@@ -586,7 +588,7 @@ export const LastCard: React.FC = () => {
 
           playCardPlaceSound();
           triggerHaptic('medium');
-          setStatusMessage(`Opponent played ${playedCard.label} of ${SUIT_NAMES[chosenSuit]}.`);
+          setStatusMessage(`Opponent played ${playedCard.label} of ${SUIT_NAMES[chosenSuit as Suit]}.`);
         } else if (action === 'DRAW_EVENT') {
           // Host informed Guest of a draw
           setIsAwaitingServer(false);

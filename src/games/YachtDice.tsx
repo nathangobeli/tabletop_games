@@ -307,10 +307,10 @@ const yachtReducer = (state: YachtState, action: YachtAction): YachtState => {
 };
 
 export const YachtDice: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
   const [state, dispatch] = useReducer(yachtReducer, undefined, createInitialYachtState);
 
-  const rollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Sync game status with context
   useEffect(() => {
@@ -594,7 +594,7 @@ export const YachtDice: React.FC = () => {
             {/* Roll Button at Bottom of Left Column */}
             <div className="w-full pt-1">
               <button
-                onClick={rollDice}
+                onClick={() => rollDice(false)}
                 type="button"
                 disabled={
                   (state.phase !== 'INITIAL_ROLL' && state.phase !== 'DECIDING') ||

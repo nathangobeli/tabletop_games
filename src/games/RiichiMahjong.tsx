@@ -9,9 +9,7 @@ import { useRemoteMultiplayer } from '../hooks/useRemoteMultiplayer';
 import type { PlayerNumber } from '../types/game';
 import {
   playTileClackSound,
-  playCaptureSound,
   playVictorySound,
-  playErrorBuzz,
   triggerHaptic,
 } from '../utils/feedback';
 import { shuffleDeck, dealCards } from '../utils/deck';

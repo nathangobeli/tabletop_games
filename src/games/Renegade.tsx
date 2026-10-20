@@ -19,7 +19,7 @@ const DIRECTIONS = [
 ];
 
 export const Renegade: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
   // Initial standard Reversi center setup:
   // [3,3]=2 (White), [3,4]=1 (Black), [4,3]=1 (Black), [4,4]=2 (White)

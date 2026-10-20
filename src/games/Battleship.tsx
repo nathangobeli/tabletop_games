@@ -228,7 +228,7 @@ export const Battleship: React.FC = () => {
   // Enemy Sunk Ships Tracking (Works for both Vs CPU and Remote Duel)
   const [enemySunkShipIds, setEnemySunkShipIds] = useState<ShipId[]>([]);
   const [showGameOverModal, setShowGameOverModal] = useState<boolean>(true);
-  const [portraitRosterTab, setPortraitRosterTab] = useState<'enemy' | 'friendly'>('enemy');
+  const [, setPortraitRosterTab] = useState<'enemy' | 'friendly'>('enemy');
 
   // -------------------------------------------------------------------------
   // Human-Like AI Tactical Memory Brain
@@ -370,7 +370,7 @@ export const Battleship: React.FC = () => {
     col: number
   ): { nextShips: ShipPlacement[]; result: ShotResult } => {
     let hitFound = false;
-    let hitShipConfig: ShipPlacement | null = null;
+    let hitShipConfig: ShipPlacement | undefined;
 
     const nextShips = targetShips.map((ship) => {
       let segmentHit = false;
@@ -387,7 +387,7 @@ export const Battleship: React.FC = () => {
         hitFound = true;
         const newHits = ship.hits + 1;
         const isSunk = newHits >= ship.size;
-        const updated = { ...ship, hits: newHits, sunk: isSunk };
+        const updated: ShipPlacement = { ...ship, hits: newHits, sunk: isSunk };
         hitShipConfig = updated;
         return updated;
       }
@@ -395,6 +395,7 @@ export const Battleship: React.FC = () => {
     });
 
     const allSunk = nextShips.every((s) => s.sunk);
+    const hitShip = hitShipConfig as ShipPlacement | undefined;
 
     return {
       nextShips,
@@ -402,9 +403,9 @@ export const Battleship: React.FC = () => {
         row,
         col,
         isHit: hitFound,
-        shipId: hitShipConfig?.id,
-        shipName: hitShipConfig?.name,
-        sunk: hitShipConfig?.sunk ?? false,
+        shipId: hitShip?.id,
+        shipName: hitShip?.name,
+        sunk: hitShip?.sunk ?? false,
         allSunk,
       },
     };
@@ -1284,7 +1285,7 @@ export const Battleship: React.FC = () => {
         {/* ============================================================== */}
         {/* PHASE 2: COMBAT ENGAGEMENT (REAL TOY BATTLESHIP VISUALS)       */}
         {/* ============================================================== */}
-        {phase === 'battle' && (
+        {(phase === 'battle' || phase === 'game-over') && (
           <div className="w-full h-full flex flex-col items-center justify-between min-h-0">
             {/* Clamshell Case Switcher: Top Lid (Radar) vs Bottom Tray (Fleet) (Portrait Mode) */}
             {!isLandscape && (

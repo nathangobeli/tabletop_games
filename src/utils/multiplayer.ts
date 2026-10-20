@@ -161,7 +161,7 @@ class MultiplayerManager {
   /**
    * Start 20-second reconnection grace period countdown
    */
-  private startGracePeriod(reason: 'backgrounded' | 'network') {
+  private startGracePeriod(_reason: 'backgrounded' | 'network') {
     this.stopGracePeriod();
     this.graceSecondsLeft = 20;
     this.setPresence({ presence: 'reconnecting', secondsLeft: 20 });

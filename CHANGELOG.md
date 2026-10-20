@@ -5,6 +5,57 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-19 — "Cribbage Rules & Gameplay Overhaul, Mobile-First Catalog Filters & Favorites, Global Audio/Haptics Persistence & 100% CPU AI Coverage"
+
+### Fixed & Overhauled — Cribbage Rules, State Machine & AI (`src/games/Cribbage.tsx`, `src/utils/cribbageAi.ts`)
+- **Fixed Fatal Auto-Reset Loop**:
+  - Removed live score states (`[dealer, scoreP1, scoreP2, prevScoreP1, prevScoreP2]`) from `startNewRound` / `resetGame` dependency arrays and mounted initialization via `hasInitializedRef` so scoring points or rotating the dealer button never resets the match back to `0–0`.
+- **Fixed Crib Discard Race Conditions & `<StrictMode>` Duplicate Discards**:
+  - Guarded CPU discard timeouts with `cpuHasDiscardedRef` to prevent 6-card Cribs under React 18 `<StrictMode>`.
+  - Replaced stale closure checks with a reactive `useEffect` that transitions to `proceedToStarterCut` strictly when `p1DiscardReady && p2DiscardReady && crib.length === 4`.
+- **Official Tournament Pegging to 31 & "Go" Rules**:
+  - Added `isCycleResetting` lock during `31` and `Go` series resets so the CPU pegging `useEffect` never fires duplicate card plays while the count resets to `0`.
+  - Implemented official ACC tournament "Go" rules: when a player calls "Go", the opponent continues playing any legal cards up to `31` (scoring `2` pts for `31` or `1` pt for Last Card / Go), and the next `0`-count series is led by the opponent of `lastPlayerToPeg`.
+  - Added visible face-down opponent card backs in all modes (`vs-cpu`, `pass-and-play`, and `remote`) so players can track remaining cards during pegging.
+  - Added `TurnTransitionModal` privacy shields for `pass-and-play` hand switches during both Discard and Pegging phases.
+- **Unobstructed Board Pegging & Walk-Off Victory**:
+  - Repositioned *The Show* itemized scorecard into the center tabletop below `WoodenCribbageBoard` so brass and steel peg leapfrog animations remain visible during hand counting.
+  - Added dual pre-game starting holes (`-1` and `0`) per player track so both front and back pegs start on the board before advancing.
+  - Enforced immediate walk-off victory at `121+` points during His Heels, Pegging, Non-Dealer Show, Dealer Show, or Crib without counting subsequent hands.
+- **Enhanced Cribbage AI Heuristics (`src/utils/cribbageAi.ts`)**:
+  - Upgraded `estimateHandValue` with full run-multiplicity detection (scoring 3-card double runs like `3-4-4-5` at `8` pts instead of `0`).
+  - Fixed `evaluateCribDiscardSynergy` (`getCardPegValue(c1) + getCardPegValue(c2) === 15`) so `10`-value face cards paired with a `5` are never treated as safe opponent-crib discards.
+
+### Added — Mobile-Priority Main Menu Upgrades & Theme Visibility (`src/components/MainMenu.tsx`)
+- **Horizontally Scrollable Category Filter Bar & Pin-to-Favorites**:
+  - Added thumb-friendly horizontal filter pills (`All (28)`, `⭐ Saved`, `🃏 Cards & Tile`, `♟️ Strategy`, `🎯 Action & Sports`, `🧩 Dice & Logic`).
+  - Added a top-left `★` / `☆` favorite button on every game card persisted in `localStorage` (`tabletop_favorites`), automatically pinning saved games to the top of the `All` catalog view.
+- **Live Table Theme Visibility on Main Menu**:
+  - Removed the opaque `bg-primary-bg` wrapper on `MainMenu` and added theme-adaptive dark/light card and header styling so all 4 table themes (`🪵 Wood`, `🌌 Night`, `🟢 Felt`, `⚡ Arcade`) transform the Main Menu immediately.
+- **Quick Default Mode Toggle (`🤖 Vs CPU` / `👥 2P Pass`)**:
+  - Added a one-tap default mode toggle in the Main Menu header and persisted `tabletop_game_mode` in `localStorage` (defaulting to `'pve'` / Solo vs CPU).
+
+### Added — Global Audio & Haptics Mute Persistence (`src/utils/feedback.ts`, `src/context/GameContext.tsx`)
+- **Unified Sound + Vibration Mute**:
+  - Connected the header Sound/Haptics toggle to `setFeedbackEnabled()` in `src/utils/feedback.ts` (persisted in `localStorage` under `tabletop_feedback_enabled`), muting all synthesized Web Audio sound effects and device vibrations across all 28 games when disabled.
+
+### Added — Solo CPU AI for Backgammon & Billiards (`src/games/Backgammon.tsx`, `src/games/Billiards.tsx`)
+- **Backgammon CPU Opponent (`Backgammon.tsx`)**:
+  - Added automated dice rolling and tactical move evaluation for Player 2 in `pve` mode (prioritizing bearing off, hitting opponent blots, covering single blots into 2-checker points, and advancing into the `18..23` home board).
+  - Fixed `hasAnyLegalMoves` / `getDestinations` to evaluate updated board states accurately and automatically pass turns when a dice roll yields zero legal moves.
+- **Billiards 8-Ball CPU Opponent (`Billiards.tsx`)**:
+  - Added automated kitchen cue-ball placement on Ball-in-Hand fouls and Ghost-Ball pocket cut geometry aiming with realistic strike power scaling and human-like angular variance in `pve` mode.
+
+### Fixed — Multi-Game Runtime Stability & Build Hygiene
+- **President (`src/games/President.tsx`)**: Fixed missing `RANK_LABELS` constant (`ReferenceError` on card validation/play) and wrapped `onClick={() => handlePass(false)}` so React's click event object is never interpreted as `isCpu = true`.
+- **Last Card (`src/games/LastCard.tsx`)**: Fixed turn-guard comparisons (`gamePlayMode === 'vs-cpu'` instead of `'pve'`) so human taps cannot play or draw during the CPU's turn, and synced initial play mode with `GameContext`.
+- **Battleship (`src/games/Battleship.tsx`)**: Enabled the combat radar and fleet grids to stay visible when `phase === 'game-over'` so players can inspect surviving enemy ship positions after closing the victory modal.
+- **Yacht Dice (`src/games/YachtDice.tsx`)**: Wrapped `onClick={() => rollDice(false)}` on the Roll button to prevent synthetic `MouseEvent` from triggering CPU roll logic.
+- **Mancala, Backgammon, Dots and Boxes & Carrom**: Removed leftover undefined `setShowTurnTransition(false)` calls in `resetGame()`.
+- **Strict TypeScript & Tailwind Build Hygiene**: Resolved all 30 TypeScript compiler errors across 14 modules (`tsc && vite build` now completes with 0 errors) and anchored `tailwind.config.js` / `postcss.config.js` paths via `import.meta.url`.
+
+---
+
 ## [2.1.0] - 2026-10-12 — "Cribbage: 121-Point Classic Tabletop with Tactile Wooden Board & Leapfrog Pegs"
 
 ### Added & Architected — Cribbage Module (`src/games/Cribbage.tsx`)

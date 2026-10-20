@@ -16,7 +16,6 @@ import {
   dealCards,
   createStandardDeck,
   SUIT_SYMBOLS,
-  STANDARD_SUITS,
   type CardSuit as Suit,
 } from '../utils/cards';
 
@@ -46,6 +45,23 @@ const PRESIDENT_RANK_ORDER: Record<number, number> = {
   11: 11, // Jack
   12: 12, // Queen
   13: 13, // King
+};
+
+const RANK_LABELS: Record<Rank, string> = {
+  3: '3',
+  4: '4',
+  5: '5',
+  6: '6',
+  7: '7',
+  8: '8',
+  9: '9',
+  10: '10',
+  11: 'J',
+  12: 'Q',
+  13: 'K',
+  14: 'A',
+  15: '2',
+  99: 'Joker',
 };
 
 export const CREATE_PRESIDENT_DECK = (): PlayingCard[] => {
@@ -134,7 +150,7 @@ export const PresidentCardView: React.FC<{
 };
 
 export const President: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
   const [handP1, setHandP1] = useState<PlayingCard[]>([]);
   const [handP2, setHandP2] = useState<PlayingCard[]>([]);
@@ -513,7 +529,7 @@ export const President: React.FC = () => {
             <div className="w-full flex items-center justify-center gap-3 z-20">
               <button
                 type="button"
-                onClick={handlePass}
+                onClick={() => handlePass(false)}
                 disabled={!currentStack}
                 className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 font-black text-xs uppercase tracking-wider active:scale-95 transition-all shadow-md"
               >

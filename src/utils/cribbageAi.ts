@@ -1,9 +1,6 @@
 // Tactical Heuristic AI for Cribbage (Discarding & Pegging Strategy)
 import {
   type CribbageCard,
-  type Rank,
-  getCribbageValue,
-  scoreHand,
   evaluatePeggingPlay,
   getLegalPeggingCards,
 } from './cribbageScoring';
@@ -46,9 +43,10 @@ export const evaluateCribDiscardSynergy = (c1: CribbageCard, c2: CribbageCard): 
     score += 0.8;
   }
 
-  // 6. Safe balking cards (unfavorable for crib)
-  // King + low card, 10 + 2, 9 + Ace
-  if (c1.rank === 13 && c2.rank <= 6) {
+  // 6. Safe balking cards (unfavorable for crib: King/Queen + wide-gapped non-5 low card)
+  const highRank = Math.max(c1.rank, c2.rank);
+  const lowRank = Math.min(c1.rank, c2.rank);
+  if (highRank >= 12 && lowRank <= 4) {
     score -= 1.5;
   }
 
@@ -79,15 +77,15 @@ const estimateHandValue = (keptCards: CribbageCard[]): number => {
     }
   }
 
-  // Runs
+  // Runs (check run of 4, otherwise all 3-card subsets for single or double runs of 3)
   const ranks = [...keptCards].map((c) => c.rank).sort((a, b) => a - b);
-  // Check run of 4
   if (ranks[1] === ranks[0] + 1 && ranks[2] === ranks[1] + 1 && ranks[3] === ranks[2] + 1) {
     handScore += 4;
   } else {
-    // Check runs of 3
-    for (let i = 0; i <= 1; i++) {
-      if (ranks[i + 1] === ranks[i] + 1 && ranks[i + 2] === ranks[i + 1] + 1) {
+    // Check all 4 possible 3-card combinations (handles double runs like 3-4-4-5 = 6 pts)
+    for (let skip = 0; skip < 4; skip++) {
+      const trio = keptCards.filter((_, idx) => idx !== skip).map((c) => c.rank).sort((a, b) => a - b);
+      if (trio[1] === trio[0] + 1 && trio[2] === trio[1] + 1) {
         handScore += 3;
       }
     }
@@ -98,8 +96,9 @@ const estimateHandValue = (keptCards: CribbageCard[]): number => {
     handScore += 4;
   }
 
-  // Bonus potential for 5s and connectors
+  // His Nobs potential (+0.25 per Jack in hand, since 4/16 chance cut matches suit)
   for (const c of keptCards) {
+    if (c.rank === 11) handScore += 0.25;
     if (c.rank === 5) handScore += 1.5;
   }
 

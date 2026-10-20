@@ -1,5 +1,6 @@
 import React from 'react';
-import { CardSuit, SUIT_SYMBOLS, isRedSuit } from '../utils/cards';
+import { SUIT_SYMBOLS, isRedSuit } from '../utils/cards';
+import type { CardSuit } from '../utils/cards';
 
 export interface ProceduralCardProps {
   card: {

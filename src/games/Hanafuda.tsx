@@ -296,7 +296,7 @@ export const HanafudaCardView: React.FC<{
 };
 
 export const Hanafuda: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
   const [deck, setDeck] = useState<HanafudaCard[]>([]);
   const [handP1, setHandP1] = useState<HanafudaCard[]>([]);

@@ -164,7 +164,6 @@ export const Carrom: React.FC = () => {
     setScoreP1(0);
     setScoreP2(0);
     setWinner(null);
-    setShowTurnTransition(false);
     setStatusMessage('Player 1: Position striker on baseline, drag back to aim!');
     positionStrikerForTurn(1);
     setGameStatus('active');

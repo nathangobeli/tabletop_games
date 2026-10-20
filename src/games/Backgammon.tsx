@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { GameHeader } from '../components/GameHeader';
 import { GameOverModal } from '../components/GameOverModal';
 import { GameContainer } from '../components/GameContainer';
-import { useOrientation } from '../hooks/useOrientation';
 import type { PlayerNumber } from '../types/game';
 import { triggerHaptic, playCaptureSound, playWoodClackSound } from '../utils/feedback';
 
@@ -48,7 +47,7 @@ const getInitialPoints = (): PointState[] => {
 };
 
 export const Backgammon: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
   const [points, setPoints] = useState<PointState[]>(getInitialPoints);
   const [barP1, setBarP1] = useState<number>(0);
@@ -74,11 +73,11 @@ export const Backgammon: React.FC = () => {
     setMovesRemaining([]);
     setSelectedPoint(null);
     setWinner(null);
-    setShowTurnTransition(false);
+    setIsCpuThinking(false);
     playWoodClackSound();
     setStatusMessage('Player 1: Roll the dice to start turn');
     setGameStatus('active');
-  }, [setGameStatus]);
+  }, [setGameStatus, setIsCpuThinking]);
 
   // Check if player has all active pieces in their home board
   const isHomeBoardReady = useCallback((player: PlayerNumber, pts: PointState[], barCount: number) => {
@@ -100,54 +99,96 @@ export const Backgammon: React.FC = () => {
   }, []);
 
   // Determine valid destinations from selected position
-  const getDestinations = useCallback((from: number | 'bar', player: PlayerNumber, availableMoves: number[]): { targetIndex: number | 'off'; dieVal: number }[] => {
-    const destinations: { targetIndex: number | 'off'; dieVal: number }[] = [];
-    const opponent: PlayerNumber = player === 1 ? 2 : 1;
-    const canBearOff = isHomeBoardReady(player, points, player === 1 ? barP1 : barP2);
+  const getDestinations = useCallback(
+    (
+      from: number | 'bar',
+      player: PlayerNumber,
+      availableMoves: number[],
+      pts: PointState[] = points,
+      p1Bar: number = barP1,
+      p2Bar: number = barP2
+    ): { targetIndex: number | 'off'; dieVal: number }[] => {
+      const destinations: { targetIndex: number | 'off'; dieVal: number }[] = [];
+      const opponent: PlayerNumber = player === 1 ? 2 : 1;
+      const canBearOff = isHomeBoardReady(player, pts, player === 1 ? p1Bar : p2Bar);
 
-    const uniqueDice = Array.from(new Set(availableMoves));
+      const uniqueDice = Array.from(new Set(availableMoves));
 
-    for (const die of uniqueDice) {
-      if (from === 'bar') {
-        // Re-entering:
-        // P1 re-enters at high points (24 - die = index 24 - die)
-        // P2 re-enters at low points (die - 1)
-        const targetPt = player === 1 ? 24 - die : die - 1;
-        const target = points[targetPt];
+      for (const die of uniqueDice) {
+        if (from === 'bar') {
+          // Re-entering:
+          // P1 re-enters at high points (24 - die = index 24 - die)
+          // P2 re-enters at low points (die - 1)
+          const targetPt = player === 1 ? 24 - die : die - 1;
+          const target = pts[targetPt];
 
-        // A point is open if empty, owned by player, or single opponent blot
-        if (target.player !== opponent || target.count <= 1) {
-          destinations.push({ targetIndex: targetPt, dieVal: die });
-        }
-      } else {
-        // Regular point move
-        const targetPt = player === 1 ? from - die : from + die;
-
-        // Check normal movement
-        if (targetPt >= 0 && targetPt < 24) {
-          const target = points[targetPt];
+          // A point is open if empty, owned by player, or single opponent blot
           if (target.player !== opponent || target.count <= 1) {
             destinations.push({ targetIndex: targetPt, dieVal: die });
           }
-        }
-        // Check bearing off
-        else if (canBearOff) {
-          if (player === 1 && targetPt < 0) {
-            // Exact die or highest checker
-            if (targetPt === -1 || from === Math.max(...points.map((p, idx) => (p.player === 1 && p.count > 0 ? idx : -1)))) {
-              destinations.push({ targetIndex: 'off', dieVal: die });
+        } else {
+          // Regular point move
+          const targetPt = player === 1 ? from - die : from + die;
+
+          // Check normal movement
+          if (targetPt >= 0 && targetPt < 24) {
+            const target = pts[targetPt];
+            if (target.player !== opponent || target.count <= 1) {
+              destinations.push({ targetIndex: targetPt, dieVal: die });
             }
-          } else if (player === 2 && targetPt >= 24) {
-            if (targetPt === 24 || from === Math.min(...points.map((p, idx) => (p.player === 2 && p.count > 0 ? idx : 25)))) {
-              destinations.push({ targetIndex: 'off', dieVal: die });
+          }
+          // Check bearing off
+          else if (canBearOff) {
+            if (player === 1 && targetPt < 0) {
+              // Exact die or highest checker
+              if (targetPt === -1 || from === Math.max(...pts.map((p, idx) => (p.player === 1 && p.count > 0 ? idx : -1)))) {
+                destinations.push({ targetIndex: 'off', dieVal: die });
+              }
+            } else if (player === 2 && targetPt >= 24) {
+              if (targetPt === 24 || from === Math.min(...pts.map((p, idx) => (p.player === 2 && p.count > 0 ? idx : 25)))) {
+                destinations.push({ targetIndex: 'off', dieVal: die });
+              }
             }
           }
         }
       }
-    }
 
-    return destinations;
-  }, [points, barP1, barP2, isHomeBoardReady]);
+      return destinations;
+    },
+    [points, barP1, barP2, isHomeBoardReady]
+  );
+
+  // Check if player has any legal moves remaining with dice
+  const hasAnyLegalMoves = useCallback(
+    (player: PlayerNumber, moves: number[], pts: PointState[], p1Bar: number, p2Bar: number) => {
+      const barCount = player === 1 ? p1Bar : p2Bar;
+      if (barCount > 0) {
+        return getDestinations('bar', player, moves, pts, p1Bar, p2Bar).length > 0;
+      }
+
+      for (let i = 0; i < 24; i++) {
+        if (pts[i].player === player && pts[i].count > 0) {
+          if (getDestinations(i, player, moves, pts, p1Bar, p2Bar).length > 0) {
+            return true;
+          }
+        }
+      }
+      return false;
+    },
+    [getDestinations]
+  );
+
+  // Finish turn handler
+  const endTurn = useCallback(() => {
+    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
+    setTurn(nextPlayer);
+    setMovesRemaining([]);
+    setSelectedPoint(null);
+    setIsCpuThinking(false);
+    setGameStatus('active');
+    const nextName = nextPlayer === 2 && gameMode === 'pve' ? 'CPU' : `Player ${nextPlayer}`;
+    setStatusMessage(`${nextName}'s turn. Roll dice to start.`);
+  }, [turn, setGameStatus, setIsCpuThinking, gameMode]);
 
   // Tactile Die Renderer Helper
   const renderTactileDie = (d: number, key?: number | string) => (
@@ -196,18 +237,29 @@ export const Backgammon: React.FC = () => {
 
     // Doubles rule: 4 moves instead of 2
     const moves = d1 === d2 ? [d1, d1, d1, d1] : [d1, d2];
+    const actorName = turn === 2 && gameMode === 'pve' ? 'CPU' : `Player ${turn}`;
+
+    if (!hasAnyLegalMoves(turn, moves, points, barP1, barP2)) {
+      setMovesRemaining(moves);
+      setStatusMessage(`${actorName} rolled [${d1}, ${d2}] — no legal moves available! Passing turn...`);
+      setTimeout(() => {
+        endTurn();
+      }, 950);
+      return;
+    }
+
     setMovesRemaining(moves);
 
     // Auto-select bar if player has checkers on bar
     const barCount = turn === 1 ? barP1 : barP2;
     if (barCount > 0) {
       setSelectedPoint('bar');
-      setStatusMessage(`Player ${turn} rolled [${d1}, ${d2}]. You must re-enter from the Bar!`);
+      setStatusMessage(`${actorName} rolled [${d1}, ${d2}]. Must re-enter from the Bar!`);
     } else {
       setSelectedPoint(null);
-      setStatusMessage(`Player ${turn} rolled [${d1}, ${d2}]. Select a checker to move.`);
+      setStatusMessage(`${actorName} rolled [${d1}, ${d2}]. Select a checker to move.`);
     }
-  }, [movesRemaining.length, winner, turn, barP1, barP2]);
+  }, [movesRemaining.length, winner, turn, gameMode, hasAnyLegalMoves, points, barP1, barP2, endTurn]);
 
   // Compute all valid targets for current selection
   const validTargets = useMemo(() => {
@@ -215,139 +267,234 @@ export const Backgammon: React.FC = () => {
     return getDestinations(selectedPoint, turn, movesRemaining);
   }, [selectedPoint, movesRemaining, turn, getDestinations]);
 
-  // Check if player has any legal moves remaining with dice
-  const hasAnyLegalMoves = useCallback((player: PlayerNumber, moves: number[], pts: PointState[], p1Bar: number, p2Bar: number) => {
-    const barCount = player === 1 ? p1Bar : p2Bar;
-    if (barCount > 0) {
-      return getDestinations('bar', player, moves).length > 0;
-    }
+  // Execute Move from a specific origin
+  const executeMoveFrom = useCallback(
+    (fromPoint: number | 'bar', targetIndex: number | 'off', dieVal: number) => {
+      if (movesRemaining.length === 0 || winner !== null) return;
 
-    for (let i = 0; i < 24; i++) {
-      if (pts[i].player === player && pts[i].count > 0) {
-        if (getDestinations(i, player, moves).length > 0) {
-          return true;
+      const nextPoints = points.map((p) => ({ ...p }));
+      let nextBarP1 = barP1;
+      let nextBarP2 = barP2;
+      let nextOffP1 = offP1;
+      let nextOffP2 = offP2;
+      const opponent: PlayerNumber = turn === 1 ? 2 : 1;
+      const actorName = turn === 2 && gameMode === 'pve' ? 'CPU' : `Player ${turn}`;
+
+      // 1. Remove piece from origin
+      if (fromPoint === 'bar') {
+        if (turn === 1) nextBarP1--;
+        else nextBarP2--;
+      } else {
+        nextPoints[fromPoint].count--;
+        if (nextPoints[fromPoint].count === 0) {
+          nextPoints[fromPoint].player = 0;
         }
       }
-    }
-    return false;
-  }, [getDestinations]);
 
-  // Finish turn handler
-  const endTurn = useCallback(() => {
-    const nextPlayer: PlayerNumber = turn === 1 ? 2 : 1;
-    setTurn(nextPlayer);
-    setMovesRemaining([]);
-    setSelectedPoint(null);
-    setGameStatus('active');
-    setStatusMessage(`Player ${nextPlayer}'s turn. Roll dice to start.`);
-  }, [turn, setGameStatus]);
-
-  // Execute Move
-  const handleDestinationClick = useCallback((targetIndex: number | 'off', dieVal: number) => {
-    if (selectedPoint === null || movesRemaining.length === 0 || winner !== null) return;
-
-    const nextPoints = points.map((p) => ({ ...p }));
-    let nextBarP1 = barP1;
-    let nextBarP2 = barP2;
-    let nextOffP1 = offP1;
-    let nextOffP2 = offP2;
-    const opponent: PlayerNumber = turn === 1 ? 2 : 1;
-
-    // 1. Remove piece from origin
-    if (selectedPoint === 'bar') {
-      if (turn === 1) nextBarP1--;
-      else nextBarP2--;
-    } else {
-      nextPoints[selectedPoint].count--;
-      if (nextPoints[selectedPoint].count === 0) {
-        nextPoints[selectedPoint].player = 0;
-      }
-    }
-
-    // 2. Place piece at destination
-    if (targetIndex === 'off') {
-      // Borne off!
-      if (turn === 1) nextOffP1++;
-      else nextOffP2++;
-      playCaptureSound();
-      triggerHaptic('medium');
-
-      // Check win: 15 checkers borne off
-      if (nextOffP1 >= 15) {
-        setOffP1(15);
-        setWinner(1);
-        setStatusMessage('🎉 Player 1 borne off all 15 checkers and wins!');
-        setGameStatus('finished');
-        return;
-      }
-      if (nextOffP2 >= 15) {
-        setOffP2(15);
-        setWinner(2);
-        setStatusMessage('🎉 Player 2 borne off all 15 checkers and wins!');
-        setGameStatus('finished');
-        return;
-      }
-    } else {
-      const targetPt = nextPoints[targetIndex];
-      // Hit blot!
-      if (targetPt.player === opponent && targetPt.count === 1) {
-        if (opponent === 1) nextBarP1++;
-        else nextBarP2++;
-        targetPt.player = turn;
-        targetPt.count = 1;
+      // 2. Place piece at destination
+      if (targetIndex === 'off') {
+        // Borne off!
+        if (turn === 1) nextOffP1++;
+        else nextOffP2++;
         playCaptureSound();
         triggerHaptic('medium');
+
+        // Check win: 15 checkers borne off
+        if (nextOffP1 >= 15) {
+          setOffP1(15);
+          setWinner(1);
+          setIsCpuThinking(false);
+          setStatusMessage('🎉 Player 1 borne off all 15 checkers and wins!');
+          setGameStatus('finished');
+          return;
+        }
+        if (nextOffP2 >= 15) {
+          setOffP2(15);
+          setWinner(2);
+          setIsCpuThinking(false);
+          setStatusMessage(`🎉 ${actorName} borne off all 15 checkers and wins!`);
+          setGameStatus('finished');
+          return;
+        }
       } else {
-        targetPt.player = turn;
-        targetPt.count++;
-        playWoodClackSound();
-        triggerHaptic('light');
+        const targetPt = nextPoints[targetIndex];
+        // Hit blot!
+        if (targetPt.player === opponent && targetPt.count === 1) {
+          if (opponent === 1) nextBarP1++;
+          else nextBarP2++;
+          targetPt.player = turn;
+          targetPt.count = 1;
+          playCaptureSound();
+          triggerHaptic('medium');
+        } else {
+          targetPt.player = turn;
+          targetPt.count++;
+          playWoodClackSound();
+          triggerHaptic('light');
+        }
+      }
+
+      // 3. Deduct die
+      const dieIdx = movesRemaining.indexOf(dieVal);
+      const nextMoves = [...movesRemaining];
+      if (dieIdx !== -1) {
+        nextMoves.splice(dieIdx, 1);
+      }
+
+      setPoints(nextPoints);
+      setBarP1(nextBarP1);
+      setBarP2(nextBarP2);
+      setOffP1(nextOffP1);
+      setOffP2(nextOffP2);
+      setMovesRemaining(nextMoves);
+
+      // 4. Auto-advance turn or check further moves
+      const currentBar = turn === 1 ? nextBarP1 : nextBarP2;
+      if (nextMoves.length === 0) {
+        endTurn();
+      } else if (!hasAnyLegalMoves(turn, nextMoves, nextPoints, nextBarP1, nextBarP2)) {
+        setStatusMessage(`No further legal moves for ${actorName}. Turn passed.`);
+        setTimeout(() => endTurn(), 800);
+      } else {
+        if (currentBar > 0) {
+          setSelectedPoint('bar');
+          setStatusMessage(`${actorName}: Continue re-entering checkers from the Bar.`);
+        } else {
+          setSelectedPoint(null);
+          setStatusMessage(`${actorName}: ${nextMoves.length} move(s) remaining [${nextMoves.join(', ')}].`);
+        }
+      }
+    },
+    [
+      movesRemaining,
+      winner,
+      points,
+      barP1,
+      barP2,
+      offP1,
+      offP2,
+      turn,
+      gameMode,
+      endTurn,
+      hasAnyLegalMoves,
+      setGameStatus,
+      setIsCpuThinking,
+    ]
+  );
+
+  const handleDestinationClick = useCallback(
+    (targetIndex: number | 'off', dieVal: number) => {
+      if (selectedPoint === null) return;
+      executeMoveFrom(selectedPoint, targetIndex, dieVal);
+    },
+    [selectedPoint, executeMoveFrom]
+  );
+
+  // Solo CPU AI Turn Automation (Player 2 in 'pve' mode)
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || winner !== null) {
+      setIsCpuThinking(false);
+      return;
+    }
+
+    setIsCpuThinking(true);
+
+    // Phase 1: Roll dice if not yet rolled
+    if (movesRemaining.length === 0) {
+      const rollTimer = setTimeout(() => {
+        rollDice();
+      }, 650);
+      return () => clearTimeout(rollTimer);
+    }
+
+    // Phase 2: Evaluate all legal moves for Player 2 and execute best move
+    if (!hasAnyLegalMoves(2, movesRemaining, points, barP1, barP2)) {
+      return;
+    }
+
+    const candidates: { from: number | 'bar'; targetIndex: number | 'off'; dieVal: number; score: number }[] = [];
+    const origins: (number | 'bar')[] = barP2 > 0
+      ? ['bar']
+      : points.map((p, idx) => (p.player === 2 && p.count > 0 ? idx : -1)).filter((idx) => idx !== -1);
+
+    for (const from of origins) {
+      const dests = getDestinations(from, 2, movesRemaining, points, barP1, barP2);
+      for (const d of dests) {
+        let score = 0;
+        if (d.targetIndex === 'off') {
+          score += 130;
+        } else {
+          const targetPt = points[d.targetIndex];
+          // Hit opponent blot
+          if (targetPt.player === 1 && targetPt.count === 1) {
+            score += 90 + (23 - d.targetIndex) * 1.5;
+          }
+          // Cover own blot to make a safe 2-checker point
+          else if (targetPt.player === 2 && targetPt.count === 1) {
+            score += 70 + (d.targetIndex >= 18 ? 15 : 0);
+          }
+          // Reinforce existing point
+          else if (targetPt.player === 2 && targetPt.count >= 2) {
+            score += 15;
+          }
+          // Land alone on empty point (blot exposure risk)
+          else if (targetPt.count === 0) {
+            score -= d.targetIndex < 18 ? 20 : 8;
+          }
+
+          // Advance into CPU home board (18..23)
+          if (d.targetIndex >= 18 && (from === 'bar' || from < 18)) {
+            score += 28;
+          }
+        }
+
+        // Penalty for breaking a 2-checker point at origin
+        if (from !== 'bar' && points[from].count === 2) {
+          score -= 38;
+        }
+        // Bonus for rescuing a single exposed blot at origin
+        if (from !== 'bar' && points[from].count === 1) {
+          score += 24;
+        }
+        // Slight preference for advancing back checkers
+        if (from !== 'bar') {
+          score += (23 - from) * 0.6;
+        }
+
+        candidates.push({ from, targetIndex: d.targetIndex, dieVal: d.dieVal, score });
       }
     }
 
-    // 3. Deduct die
-    const dieIdx = movesRemaining.indexOf(dieVal);
-    const nextMoves = [...movesRemaining];
-    if (dieIdx !== -1) {
-      nextMoves.splice(dieIdx, 1);
-    }
+    if (candidates.length === 0) return;
 
-    setPoints(nextPoints);
-    setBarP1(nextBarP1);
-    setBarP2(nextBarP2);
-    setOffP1(nextOffP1);
-    setOffP2(nextOffP2);
-    setMovesRemaining(nextMoves);
+    candidates.sort((a, b) => b.score - a.score);
+    const chosen = candidates[0];
 
-    // 4. Auto-advance turn or check further moves
-    const currentBar = turn === 1 ? nextBarP1 : nextBarP2;
-    if (nextMoves.length === 0) {
-      endTurn();
-    } else if (!hasAnyLegalMoves(turn, nextMoves, nextPoints, nextBarP1, nextBarP2)) {
-      setStatusMessage(`No further legal moves for Player ${turn}. Turn passed.`);
-      setTimeout(() => endTurn(), 800);
-    } else {
-      if (currentBar > 0) {
-        setSelectedPoint('bar');
-        setStatusMessage(`Player ${turn}: Continue re-entering checkers from the Bar.`);
-      } else {
-        setSelectedPoint(null);
-        setStatusMessage(`Player ${turn}: ${nextMoves.length} move(s) remaining [${nextMoves.join(', ')}].`);
-      }
-    }
+    const selectTimer = setTimeout(() => {
+      setSelectedPoint(chosen.from);
+    }, 280);
+
+    const moveTimer = setTimeout(() => {
+      executeMoveFrom(chosen.from, chosen.targetIndex, chosen.dieVal);
+    }, 680);
+
+    return () => {
+      clearTimeout(selectTimer);
+      clearTimeout(moveTimer);
+    };
   }, [
-    selectedPoint,
-    movesRemaining,
+    gameMode,
+    turn,
     winner,
+    movesRemaining,
     points,
     barP1,
     barP2,
-    offP1,
-    offP2,
-    turn,
-    endTurn,
+    rollDice,
     hasAnyLegalMoves,
-    setGameStatus,
+    getDestinations,
+    executeMoveFrom,
+    setIsCpuThinking,
   ]);
 
   const renderChecker = (pt: PointState, ci: number, isSelected: boolean) => (
@@ -364,6 +511,8 @@ export const Backgammon: React.FC = () => {
     </div>
   );
 
+  const isCpuTurn = gameMode === 'pve' && turn === 2;
+
   return (
     <GameContainer className="flex flex-col h-full w-full justify-between overflow-hidden relative select-none">
       <GameHeader
@@ -373,7 +522,7 @@ export const Backgammon: React.FC = () => {
         scoreP1={`${offP1}/15 Off`}
         scoreP2={`${offP2}/15 Off`}
         p1Label="P1 (Red)"
-        p2Label="P2 (Dark)"
+        p2Label={gameMode === 'pve' ? '🤖 CPU (Dark)' : 'P2 (Dark)'}
         onRestart={resetGame}
         statusMessage={statusMessage}
       />
@@ -395,16 +544,16 @@ export const Backgammon: React.FC = () => {
             {/* Roll Dice Button */}
             <button
               onClick={rollDice}
-              disabled={movesRemaining.length > 0 || winner !== null}
+              disabled={movesRemaining.length > 0 || winner !== null || isCpuTurn}
               className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl font-black text-[11px] sm:text-xs uppercase tracking-wider transition-all ${
-                movesRemaining.length === 0 && winner === null
+                movesRemaining.length === 0 && winner === null && !isCpuTurn
                   ? turn === 1
                     ? 'bg-player-1 hover:bg-blue-600 text-white active:scale-95 shadow-md shadow-blue-500/30'
                     : 'bg-player-2 hover:bg-red-600 text-white active:scale-95 shadow-md shadow-red-500/30'
                   : 'bg-gray-600 text-gray-400 opacity-50 cursor-not-allowed'
               }`}
             >
-              Roll Dice
+              {isCpuTurn ? 'CPU Turn...' : 'Roll Dice'}
             </button>
           </div>
         </div>

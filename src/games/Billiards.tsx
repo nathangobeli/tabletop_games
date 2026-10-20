@@ -120,7 +120,7 @@ const createRackBalls = (): Ball[] => {
 };
 
 export const Billiards: React.FC = () => {
-  const { setGameStatus, resetToMenu } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
   const { isLandscape } = useOrientation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -180,9 +180,10 @@ export const Billiards: React.FC = () => {
     setWinner(null);
     setIsBallInHand(false);
     setIsMoving(false);
+    setIsCpuThinking(false);
     setPottedIds([]);
     setStatusMessage('Player 1: Break shot! Aim and strike.');
-  }, []);
+  }, [setIsCpuThinking]);
 
   // Sync state ref
   useEffect(() => {
@@ -197,7 +198,7 @@ export const Billiards: React.FC = () => {
   // Handle Shot Strike
   const handleStrike = useCallback(() => {
     const s = stateRef.current;
-    if (s.isMoving || winner !== null || isBallInHand) return;
+    if (s.isMoving || winner !== null || s.isBallInHand) return;
 
     const cueBall = s.balls.find((b) => b.id === 0);
     if (!cueBall || cueBall.isPotted) return;
@@ -213,7 +214,129 @@ export const Billiards: React.FC = () => {
     setIsMoving(true);
     s.pottedThisShot = [];
     s.cueScratchedThisShot = false;
-  }, [winner, isBallInHand]);
+  }, [winner]);
+
+  // Solo CPU AI Shot Planner (Player 2 in 'pve' mode)
+  useEffect(() => {
+    if (gameMode !== 'pve' || turn !== 2 || isMoving || winner !== null) {
+      if (turn !== 2 || winner !== null) setIsCpuThinking(false);
+      return;
+    }
+
+    setIsCpuThinking(true);
+    const s = stateRef.current;
+    const cueBall = s.balls.find((b) => b.id === 0);
+    if (!cueBall) return;
+
+    // Step 1: If CPU has Ball-in-Hand, place cue ball at a clear spot in the kitchen
+    if (isBallInHand) {
+      const placeTimer = setTimeout(() => {
+        const candidateX = TABLE_WIDTH * 0.25;
+        let chosenY = TABLE_HEIGHT / 2;
+        const offsets = [0, -35, 35, -70, 70, -100, 100];
+        for (const dy of offsets) {
+          const testY = TABLE_HEIGHT / 2 + dy;
+          const overlaps = s.balls.some(
+            (b) => b.id !== 0 && !b.isPotted && Math.hypot(b.x - candidateX, b.y - testY) < BALL_RADIUS * 2.6
+          );
+          if (!overlaps) {
+            chosenY = testY;
+            break;
+          }
+        }
+        cueBall.x = candidateX;
+        cueBall.y = chosenY;
+        cueBall.isPotted = false;
+        s.isBallInHand = false;
+        setIsBallInHand(false);
+        playTapSound();
+        setStatusMessage('🤖 CPU placed cue ball and is lining up shot...');
+      }, 500);
+      return () => clearTimeout(placeTimer);
+    }
+
+    // Step 2: Compute best target ball & pocket using Ghost Ball geometry
+    const activeBalls = s.balls.filter((b) => b.id > 0 && !b.isPotted);
+    let legalTargets = activeBalls.filter((b) => {
+      if (p2Group === 'solids') return b.id >= 1 && b.id <= 7;
+      if (p2Group === 'stripes') return b.id >= 9 && b.id <= 15;
+      return b.id !== 8;
+    });
+    if (legalTargets.length === 0) {
+      // Group cleared -> target 8-ball
+      legalTargets = activeBalls.filter((b) => b.id === 8);
+    }
+    if (legalTargets.length === 0) return;
+
+    let bestAngle = 0;
+    let bestPower = 65;
+    let bestScore = -Infinity;
+
+    for (const tb of legalTargets) {
+      for (const pocket of POCKETS) {
+        const toPocketX = pocket.x - tb.x;
+        const toPocketY = pocket.y - tb.y;
+        const distToPocket = Math.hypot(toPocketX, toPocketY);
+        if (distToPocket < 1) continue;
+
+        const ux = toPocketX / distToPocket;
+        const uy = toPocketY / distToPocket;
+
+        // Ghost ball impact center
+        const gx = tb.x - ux * (BALL_RADIUS * 2);
+        const gy = tb.y - uy * (BALL_RADIUS * 2);
+
+        const toGhostX = gx - cueBall.x;
+        const toGhostY = gy - cueBall.y;
+        const distToGhost = Math.hypot(toGhostX, toGhostY);
+        if (distToGhost < 1) continue;
+
+        const sx = toGhostX / distToGhost;
+        const sy = toGhostY / distToGhost;
+
+        // Alignment between cue->ghost and target->pocket
+        const cosCut = sx * ux + sy * uy;
+        if (cosCut <= 0.25) continue; // Cut too steep (>75 deg)
+
+        const score = cosCut * 120 - distToGhost * 0.12 - distToPocket * 0.16;
+        if (score > bestScore) {
+          bestScore = score;
+          bestAngle = Math.atan2(toGhostY, toGhostX);
+          bestPower = Math.max(42, Math.min(88, Math.round(45 + (distToGhost + distToPocket) * 0.09)));
+        }
+      }
+    }
+
+    // Fallback: if no clean pocket cut found, hit closest legal ball directly
+    if (bestScore === -Infinity) {
+      const fallback = legalTargets[0];
+      bestAngle = Math.atan2(fallback.y - cueBall.y, fallback.x - cueBall.x);
+      bestPower = 68;
+    }
+
+    // Add slight human-like angular imperfection (+/- 1 degree)
+    const finalAngle = bestAngle + (Math.random() - 0.5) * 0.028;
+
+    const aimTimer = setTimeout(() => {
+      setAimAngle(finalAngle);
+      setPower(bestPower);
+      s.aimAngle = finalAngle;
+      s.power = bestPower;
+      setStatusMessage('🤖 CPU is aiming...');
+    }, 380);
+
+    const strikeTimer = setTimeout(() => {
+      s.aimAngle = finalAngle;
+      s.power = bestPower;
+      setIsCpuThinking(false);
+      handleStrike();
+    }, 950);
+
+    return () => {
+      clearTimeout(aimTimer);
+      clearTimeout(strikeTimer);
+    };
+  }, [gameMode, turn, isMoving, winner, isBallInHand, p2Group, handleStrike, setIsCpuThinking]);
 
   // Post-shot evaluation and turn progression
   const handleShotEnd = useCallback(() => {
@@ -724,10 +847,12 @@ export const Billiards: React.FC = () => {
     return () => cancelAnimationFrame(animId);
   }, [handleShotEnd, winner]);
 
+  const isCpuTurn = gameMode === 'pve' && turn === 2;
+
   // Pointer / Touch Aiming & Ball-In-Hand Interaction
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas || stateRef.current.isMoving || winner !== null) return;
+    if (!canvas || stateRef.current.isMoving || winner !== null || isCpuTurn) return;
 
     const rect = canvas.getBoundingClientRect();
     const scaleX = TABLE_WIDTH / rect.width;
@@ -751,7 +876,7 @@ export const Billiards: React.FC = () => {
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas || !stateRef.current.dragMode) return;
+    if (!canvas || !stateRef.current.dragMode || isCpuTurn) return;
 
     const rect = canvas.getBoundingClientRect();
     const scaleX = TABLE_WIDTH / rect.width;
@@ -821,7 +946,7 @@ export const Billiards: React.FC = () => {
               />
 
               {/* Ball In Hand Helper Overlay */}
-              {isBallInHand && (
+              {isBallInHand && !isCpuTurn && (
                 <div className="absolute top-2 inset-x-2 bg-emerald-600/90 text-white text-[11px] font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
                   Ball-in-Hand: Drag cue ball
                 </div>
@@ -844,7 +969,7 @@ export const Billiards: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2.5 h-2.5 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
-                  <span className="text-[10px] font-black uppercase text-player-2">P2</span>
+                  <span className="text-[10px] font-black uppercase text-player-2">{gameMode === 'pve' ? 'CPU' : 'P2'}</span>
                 </div>
                 <span className="text-[11px] font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any'}</span>
               </div>
@@ -861,6 +986,7 @@ export const Billiards: React.FC = () => {
                 min="10"
                 max="100"
                 value={power}
+                disabled={isCpuTurn}
                 onChange={(e) => setPower(Number(e.target.value))}
                 className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
               />
@@ -869,14 +995,14 @@ export const Billiards: React.FC = () => {
             {/* Strike Cue Button */}
             <button
               onClick={handleStrike}
-              disabled={isMoving || isBallInHand || winner !== null}
+              disabled={isMoving || isBallInHand || winner !== null || isCpuTurn}
               className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
-                isMoving || isBallInHand
+                isMoving || isBallInHand || isCpuTurn
                   ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
               }`}
             >
-              Shoot!
+              {isCpuTurn ? 'CPU Shot...' : 'Shoot!'}
             </button>
           </aside>
         </main>
@@ -901,7 +1027,9 @@ export const Billiards: React.FC = () => {
             {/* P2 Group Info */}
             <div className="flex items-center gap-2 text-right">
               <div className="text-right">
-                <span className="text-[10px] font-black uppercase text-player-2 block leading-tight">P2 {p2Group || 'Open'}</span>
+                <span className="text-[10px] font-black uppercase text-player-2 block leading-tight">
+                  {gameMode === 'pve' ? 'CPU' : 'P2'} {p2Group || 'Open'}
+                </span>
                 <span className="text-xs font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any ball'}</span>
               </div>
               <span className={`w-3 h-3 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
@@ -922,7 +1050,7 @@ export const Billiards: React.FC = () => {
             />
 
             {/* Ball In Hand Helper Overlay */}
-            {isBallInHand && (
+            {isBallInHand && !isCpuTurn && (
               <div className="absolute top-3 inset-x-3 bg-emerald-600/90 text-white text-xs font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
                 Ball-in-Hand: Drag the cue ball anywhere on the table
               </div>
@@ -942,6 +1070,7 @@ export const Billiards: React.FC = () => {
                 min="10"
                 max="100"
                 value={power}
+                disabled={isCpuTurn}
                 onChange={(e) => setPower(Number(e.target.value))}
                 className="w-full accent-amber-500 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
               />
@@ -950,14 +1079,14 @@ export const Billiards: React.FC = () => {
             {/* Strike Cue Button */}
             <button
               onClick={handleStrike}
-              disabled={isMoving || isBallInHand || winner !== null}
+              disabled={isMoving || isBallInHand || winner !== null || isCpuTurn}
               className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
-                isMoving || isBallInHand
+                isMoving || isBallInHand || isCpuTurn
                   ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
               }`}
             >
-              Shoot!
+              {isCpuTurn ? 'CPU Shot...' : 'Shoot!'}
             </button>
           </div>
         </main>

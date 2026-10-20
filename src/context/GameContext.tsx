@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import type { GameId, PlayerNumber, GameStatus, GameSettings, GameContextValue, TableTheme } from '../types/game';
+import type { GameId, PlayerNumber, GameStatus, GameSettings, GameContextValue, TableTheme, GameMode } from '../types/game';
+import { isFeedbackEnabled, setFeedbackEnabled, playTapSound } from '../utils/feedback';
 
 const GameContext = createContext<GameContextValue | null>(null);
 
@@ -9,11 +10,24 @@ export interface GameProviderProps {
 
 const getStoredTheme = (): TableTheme => {
   if (typeof window === 'undefined') return 'wood';
-  const saved = localStorage.getItem('tabletop_theme');
-  if (saved === 'wood' || saved === 'midnight' || saved === 'emerald' || saved === 'arcade') {
-    return saved;
-  }
+  try {
+    const saved = localStorage.getItem('tabletop_theme');
+    if (saved === 'wood' || saved === 'midnight' || saved === 'emerald' || saved === 'arcade') {
+      return saved;
+    }
+  } catch {}
   return 'wood';
+};
+
+const getStoredGameMode = (): GameMode => {
+  if (typeof window === 'undefined') return 'pve';
+  try {
+    const saved = localStorage.getItem('tabletop_game_mode');
+    if (saved === 'pve' || saved === 'pvp') {
+      return saved;
+    }
+  } catch {}
+  return 'pve';
 };
 
 const getInitialGame = (): GameId | null => {
@@ -32,15 +46,15 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const [currentPlayer, setCurrentPlayer] = useState<PlayerNumber>(1);
   const [gameStatus, setGameStatus] = useState<GameStatus>('lobby');
   const [theme, setThemeState] = useState<TableTheme>(getStoredTheme);
-  const [gameMode, setGameModeState] = useState<GameMode>('pvp');
+  const [gameMode, setGameModeState] = useState<GameMode>(getStoredGameMode);
   const [isCpuThinking, setIsCpuThinking] = useState<boolean>(false);
   const [settings, setSettings] = useState<GameSettings>({
-    haptics: true,
+    haptics: isFeedbackEnabled(),
     theme: getStoredTheme(),
   });
 
   const triggerHaptic = useCallback((pattern: number | number[] = 15) => {
-    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+    if (typeof window !== 'undefined' && isFeedbackEnabled() && 'vibrate' in navigator) {
       try {
         navigator.vibrate(pattern);
       } catch {
@@ -78,6 +92,11 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const setGameMode = useCallback((mode: GameMode) => {
     setGameModeState(mode);
     setIsCpuThinking(false);
+    if (typeof window !== 'undefined' && (mode === 'pve' || mode === 'pvp')) {
+      try {
+        localStorage.setItem('tabletop_game_mode', mode);
+      } catch {}
+    }
     triggerHaptic(20);
   }, [triggerHaptic]);
 
@@ -94,7 +113,11 @@ export const GameProvider: React.FC<GameProviderProps> = ({ children }) => {
   const toggleHaptics = useCallback(() => {
     setSettings((prev) => {
       const next = !prev.haptics;
-      if (next) triggerHaptic([10, 30, 10]);
+      setFeedbackEnabled(next);
+      if (next) {
+        triggerHaptic([10, 30, 10]);
+        playTapSound();
+      }
       return { ...prev, haptics: next };
     });
   }, [triggerHaptic]);

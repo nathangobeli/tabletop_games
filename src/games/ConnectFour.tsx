@@ -55,7 +55,6 @@ export const ConnectFour: React.FC = () => {
   // Unified Remote Multiplayer Hook
   const {
     localPlayer,
-    opponentPlayer,
     isMyTurn,
     latency,
     peerPresence,

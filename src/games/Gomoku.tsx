@@ -49,7 +49,6 @@ export const Gomoku: React.FC = () => {
   // Unified Remote Multiplayer Hook
   const {
     localPlayer,
-    opponentPlayer,
     isMyTurn,
     latency,
     peerPresence,

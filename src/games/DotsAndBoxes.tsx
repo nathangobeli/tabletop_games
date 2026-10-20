@@ -15,7 +15,7 @@ type EdgeState = 0 | 1 | 2; // 0 = unselected, 1 = P1, 2 = P2
 type BoxState = 0 | 1 | 2;  // 0 = unclaimed, 1 = P1, 2 = P2
 
 export const DotsAndBoxes: React.FC = () => {
-  const { setGameStatus, resetToMenu, gameMode, isCpuThinking, setIsCpuThinking } = useGame();
+  const { setGameStatus, resetToMenu, gameMode, setIsCpuThinking } = useGame();
 
   // Horizontal edges: [row 0..3][col 0..2]
   const [hEdges, setHEdges] = useState<EdgeState[][]>(() =>
@@ -54,7 +54,6 @@ export const DotsAndBoxes: React.FC = () => {
     setWinner(null);
     setStatusMessage('Player 1 (Blue): Connect two dots');
     setLastBoxClaimed(false);
-    setShowTurnTransition(false);
     setGameStatus('active');
   }, [setGameStatus]);
 

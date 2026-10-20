@@ -36,7 +36,6 @@ export const Mancala: React.FC = () => {
     setWinner(null);
     setStatusMessage('Player 1: Select a pit to sow');
     setLastExtraTurn(false);
-    setShowTurnTransition(false);
     setActiveDropPit(null);
     setIsSowing(false);
     setGameStatus('active');
