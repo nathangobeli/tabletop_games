@@ -443,17 +443,84 @@ export const Billiards: React.FC = () => {
     }
   }, [setGameStatus]);
 
+  // Track arena container size to guarantee exact pixel fit in both portrait and landscape
+  const arenaRef = useRef<HTMLDivElement | null>(null);
+  const [tableSize, setTableSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const isLandscapeRef = useRef<boolean>(isLandscape);
+
+  useEffect(() => {
+    isLandscapeRef.current = isLandscape;
+  }, [isLandscape]);
+
+  useEffect(() => {
+    const el = arenaRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      const availW = Math.max(0, rect.width - 4);
+      const availH = Math.max(0, rect.height - 4);
+      if (availW === 0 || availH === 0) return;
+
+      const targetAspect = isLandscape
+        ? TABLE_WIDTH / TABLE_HEIGHT
+        : TABLE_HEIGHT / TABLE_WIDTH;
+
+      let w = availW;
+      let h = w / targetAspect;
+      if (h > availH) {
+        h = availH;
+        w = h * targetAspect;
+      }
+
+      setTableSize({ w: Math.floor(w), h: Math.floor(h) });
+    };
+
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(el);
+    window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', updateSize);
+    const t1 = setTimeout(updateSize, 80);
+    const t2 = setTimeout(updateSize, 250);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSize);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isLandscape]);
+
   // Continuous Physics & Animation Loop
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
     let animId: number;
 
     const render = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+
       const s = stateRef.current;
+      const landscape = isLandscapeRef.current;
+      const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+      const logicalW = landscape ? TABLE_WIDTH : TABLE_HEIGHT;
+      const logicalH = landscape ? TABLE_HEIGHT : TABLE_WIDTH;
+      const targetCanvasW = Math.round(logicalW * dpr);
+      const targetCanvasH = Math.round(logicalH * dpr);
+
+      if (canvas.width !== targetCanvasW || canvas.height !== targetCanvasH) {
+        canvas.width = targetCanvasW;
+        canvas.height = targetCanvasH;
+      }
 
       // Update Physics if moving
       if (s.isMoving) {
@@ -574,7 +641,15 @@ export const Billiards: React.FC = () => {
       }
 
       // --- CANVAS RENDERING ---
-      ctx.clearRect(0, 0, TABLE_WIDTH, TABLE_HEIGHT);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, logicalW, logicalH);
+
+      // In Portrait mode, rotate canonical table (620x340) by -90deg so break is at bottom & rack is at top
+      if (!landscape) {
+        ctx.translate(0, TABLE_WIDTH);
+        ctx.rotate(-Math.PI / 2);
+      }
 
       // 1. Mahogany Rails & Table Border
       ctx.fillStyle = '#3e1f0c';
@@ -604,18 +679,37 @@ export const Billiards: React.FC = () => {
       ctx.fillStyle = feltGrad;
       ctx.fillRect(feltX, feltY, feltW, feltH);
 
+      // Diamond Sights along the Mahogany Rails
+      ctx.fillStyle = '#d6d3d1';
+      for (let i = 1; i <= 3; i++) {
+        const sx1 = RAIL_SIZE + (feltW / 8) * i;
+        const sx2 = RAIL_SIZE + (feltW / 8) * (i + 4);
+        ctx.beginPath();
+        ctx.arc(sx1, RAIL_SIZE / 2, 1.5, 0, Math.PI * 2);
+        ctx.arc(sx1, TABLE_HEIGHT - RAIL_SIZE / 2, 1.5, 0, Math.PI * 2);
+        ctx.arc(sx2, RAIL_SIZE / 2, 1.5, 0, Math.PI * 2);
+        ctx.arc(sx2, TABLE_HEIGHT - RAIL_SIZE / 2, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 1; i <= 3; i++) {
+        const sy = RAIL_SIZE + (feltH / 4) * i;
+        ctx.beginPath();
+        ctx.arc(RAIL_SIZE / 2, sy, 1.5, 0, Math.PI * 2);
+        ctx.arc(TABLE_WIDTH - RAIL_SIZE / 2, sy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Headstring and Foot Spot Inlay Lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
-      // Headstring (vertical line at kitchen on left side)
       ctx.beginPath();
       ctx.moveTo(TABLE_WIDTH * 0.25, feltY);
       ctx.lineTo(TABLE_WIDTH * 0.25, feltY + feltH);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Foot Spot Dot (on right side)
+      // Foot Spot Dot
       ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.beginPath();
       ctx.arc(TABLE_WIDTH * 0.72, TABLE_HEIGHT / 2, 2.5, 0, Math.PI * 2);
@@ -623,13 +717,11 @@ export const Billiards: React.FC = () => {
 
       // 3. Pockets (6 deep leather drop pockets)
       for (const pocket of POCKETS) {
-        // Outer leather rim
         ctx.fillStyle = '#1c1917';
         ctx.beginPath();
         ctx.arc(pocket.x, pocket.y, POCKET_RADIUS + 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Deep drop recess
         const pGrad = ctx.createRadialGradient(pocket.x, pocket.y, 2, pocket.x, pocket.y, POCKET_RADIUS);
         pGrad.addColorStop(0, '#09090b');
         pGrad.addColorStop(1, '#18181b');
@@ -647,7 +739,6 @@ export const Billiards: React.FC = () => {
       for (const ball of s.balls) {
         if (ball.isPotted) continue;
 
-        // Dynamic 2.5D Ball Drop Shadow onto felt relative to overhead light
         renderDynamicCircleShadow(
           ctx,
           ball.x,
@@ -659,7 +750,6 @@ export const Billiards: React.FC = () => {
           2.5
         );
 
-        // Ball Base Body
         const bGrad = ctx.createRadialGradient(
           ball.x - ball.radius * 0.35,
           ball.y - ball.radius * 0.35,
@@ -670,13 +760,11 @@ export const Billiards: React.FC = () => {
         );
 
         if (ball.isStripe) {
-          // Stripe ball: White base with colored center band
           ctx.fillStyle = '#f8fafc';
           ctx.beginPath();
           ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
           ctx.fill();
 
-          // Colored horizontal stripe
           ctx.save();
           ctx.beginPath();
           ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
@@ -686,7 +774,6 @@ export const Billiards: React.FC = () => {
           ctx.fillRect(ball.x - ball.radius, ball.y - ball.radius * 0.5, ball.radius * 2, ball.radius);
           ctx.restore();
         } else {
-          // Solid ball
           bGrad.addColorStop(0, '#ffffff');
           bGrad.addColorStop(0.25, ball.color);
           bGrad.addColorStop(1, '#0f172a');
@@ -696,18 +783,24 @@ export const Billiards: React.FC = () => {
           ctx.fill();
         }
 
-        // Center White Number Circle (for balls 1-15)
+        // Center White Number Circle (for balls 1-15) — upright in both Portrait and Landscape
         if (ball.id > 0) {
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.arc(ball.x, ball.y, ball.radius * 0.42, 0, Math.PI * 2);
+          ctx.arc(ball.x, ball.y, ball.radius * 0.44, 0, Math.PI * 2);
           ctx.fill();
 
+          ctx.save();
+          ctx.translate(ball.x, ball.y);
+          if (!landscape) {
+            ctx.rotate(Math.PI / 2);
+          }
           ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 6px sans-serif';
+          ctx.font = 'bold 6.5px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(ball.id.toString(), ball.x, ball.y + 0.5);
+          ctx.fillText(ball.id.toString(), 0, 0.5);
+          ctx.restore();
         }
 
         // Specular White Gloss Dot
@@ -721,7 +814,6 @@ export const Billiards: React.FC = () => {
       const cueBall = s.balls.find((b) => b.id === 0);
       if (cueBall && !cueBall.isPotted && !s.isMoving && winner === null) {
         if (s.isBallInHand) {
-          // Ball-in-hand glowing halo
           ctx.strokeStyle = '#22c55e';
           ctx.lineWidth = 2.5;
           ctx.setLineDash([4, 4]);
@@ -740,7 +832,6 @@ export const Billiards: React.FC = () => {
 
           for (const b of s.balls) {
             if (b.id === 0 || b.isPotted) continue;
-            // Circle raycast
             const ocX = b.x - cueBall.x;
             const ocY = b.y - cueBall.y;
             const proj = ocX * rayDirX + ocY * rayDirY;
@@ -759,13 +850,12 @@ export const Billiards: React.FC = () => {
             }
           }
 
-          // Max ray distance to cushion if no ball hit
-          const maxDist = hitBall ? hitDist : 260;
+          const maxDist = hitBall ? hitDist : 280;
           const targetX = cueBall.x + rayDirX * maxDist;
           const targetY = cueBall.y + rayDirY * maxDist;
 
           // Render Dashed Cue Line
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
           ctx.lineWidth = 1.5;
           ctx.setLineDash([5, 5]);
           ctx.beginPath();
@@ -776,8 +866,8 @@ export const Billiards: React.FC = () => {
 
           // Ghost Cue Ball at Impact
           if (hitBall) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 1.3;
             ctx.beginPath();
             ctx.arc(targetX, targetY, BALL_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
@@ -790,10 +880,10 @@ export const Billiards: React.FC = () => {
               const ndx = defX / defLen;
               const ndy = defY / defLen;
               ctx.strokeStyle = '#38bdf8';
-              ctx.lineWidth = 2;
+              ctx.lineWidth = 2.2;
               ctx.beginPath();
               ctx.moveTo(hitBall.x, hitBall.y);
-              ctx.lineTo(hitBall.x + ndx * 35, hitBall.y + ndy * 35);
+              ctx.lineTo(hitBall.x + ndx * 42, hitBall.y + ndy * 42);
               ctx.stroke();
             }
           }
@@ -840,6 +930,7 @@ export const Billiards: React.FC = () => {
         }
       }
 
+      ctx.restore();
       animId = requestAnimationFrame(render);
     };
 
@@ -849,54 +940,77 @@ export const Billiards: React.FC = () => {
 
   const isCpuTurn = gameMode === 'pve' && turn === 2;
 
+  // Convert screen pointer coordinates into canonical (620x340) table coordinates
+  const getTableCoords = (e: React.PointerEvent<HTMLCanvasElement>): { px: number; py: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    if (isLandscape) {
+      const px = (e.clientX - rect.left) * (TABLE_WIDTH / rect.width);
+      const py = (e.clientY - rect.top) * (TABLE_HEIGHT / rect.height);
+      return { px, py };
+    } else {
+      // Portrait canvas is rotated -90deg (width=340, height=620):
+      // screenX = tableY, screenY = TABLE_WIDTH - tableX
+      const cx = (e.clientX - rect.left) * (TABLE_HEIGHT / rect.width);
+      const cy = (e.clientY - rect.top) * (TABLE_WIDTH / rect.height);
+      return {
+        px: TABLE_WIDTH - cy,
+        py: cx,
+      };
+    }
+  };
+
   // Pointer / Touch Aiming & Ball-In-Hand Interaction
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas || stateRef.current.isMoving || winner !== null || isCpuTurn) return;
+    if (stateRef.current.isMoving || winner !== null || isCpuTurn) return;
+    const coords = getTableCoords(e);
+    if (!coords) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = TABLE_WIDTH / rect.width;
-    const scaleY = TABLE_HEIGHT / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
 
     const cueBall = stateRef.current.balls.find((b) => b.id === 0);
     if (!cueBall) return;
 
     if (isBallInHand) {
       stateRef.current.dragMode = 'ballInHand';
-      cueBall.x = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_WIDTH - RAIL_SIZE - BALL_RADIUS, px));
-      cueBall.y = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_HEIGHT - RAIL_SIZE - BALL_RADIUS, py));
+      cueBall.x = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_WIDTH - RAIL_SIZE - BALL_RADIUS, coords.px));
+      cueBall.y = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_HEIGHT - RAIL_SIZE - BALL_RADIUS, coords.py));
     } else {
       stateRef.current.dragMode = 'aim';
-      const angle = Math.atan2(py - cueBall.y, px - cueBall.x);
+      const angle = Math.atan2(coords.py - cueBall.y, coords.px - cueBall.x);
       setAimAngle(angle);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !stateRef.current.dragMode || isCpuTurn) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = TABLE_WIDTH / rect.width;
-    const scaleY = TABLE_HEIGHT / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
+    if (!stateRef.current.dragMode || isCpuTurn) return;
+    const coords = getTableCoords(e);
+    if (!coords) return;
 
     const cueBall = stateRef.current.balls.find((b) => b.id === 0);
     if (!cueBall) return;
 
     if (stateRef.current.dragMode === 'ballInHand') {
-      cueBall.x = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_WIDTH - RAIL_SIZE - BALL_RADIUS, px));
-      cueBall.y = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_HEIGHT - RAIL_SIZE - BALL_RADIUS, py));
+      cueBall.x = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_WIDTH - RAIL_SIZE - BALL_RADIUS, coords.px));
+      cueBall.y = Math.max(RAIL_SIZE + BALL_RADIUS, Math.min(TABLE_HEIGHT - RAIL_SIZE - BALL_RADIUS, coords.py));
     } else if (stateRef.current.dragMode === 'aim') {
-      const angle = Math.atan2(py - cueBall.y, px - cueBall.x);
+      const angle = Math.atan2(coords.py - cueBall.y, coords.px - cueBall.x);
       setAimAngle(angle);
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {}
+
     if (stateRef.current.dragMode === 'ballInHand') {
       setIsBallInHand(false);
       stateRef.current.isBallInHand = false;
@@ -928,56 +1042,97 @@ export const Billiards: React.FC = () => {
         statusMessage={statusMessage}
       />
 
-      {/* Main Playing Area */}
-      {isLandscape ? (
-        <main className="flex-1 flex flex-row items-center justify-center p-2 sm:p-3 overflow-hidden min-h-0 gap-3">
-          {/* Billiards Table Canvas Container */}
-          <div className="relative flex-1 h-full max-h-[calc(100dvh-80px)] flex items-center justify-center min-w-0">
-            <div className="relative aspect-[620/340] max-h-full max-w-full w-full clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105] flex items-center justify-center">
-              <canvas
-                ref={canvasRef}
-                width={TABLE_WIDTH}
-                height={TABLE_HEIGHT}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                className="w-full h-full touch-none cursor-crosshair"
-              />
+      {/* Unified Playing Area — Single Persistent Canvas across Portrait & Landscape */}
+      <main
+        className={`flex-1 min-h-0 min-w-0 w-full flex ${
+          isLandscape ? 'flex-row items-center justify-center p-1.5 sm:p-2.5 gap-2.5' : 'flex-col items-center justify-between p-1.5 sm:p-3 gap-1.5'
+        } overflow-hidden`}
+      >
+        {/* Top Scoreboard Bar (Portrait Only — Compact Single Row) */}
+        {!isLandscape && (
+          <div className="w-full max-w-xl shrink-0 flex items-center justify-between px-3 py-1 bg-container-dark/95 border border-[#3e444c] rounded-xl shadow-md">
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+              <span className="text-[10px] font-black uppercase text-player-1">P1 ({p1Group || 'Open'})</span>
+              <span className="text-[11px] font-bold text-accent-light">• {p1Group ? `${p1BallsLeft} left` : 'Any'}</span>
+            </div>
 
-              {/* Ball In Hand Helper Overlay */}
-              {isBallInHand && !isCpuTurn && (
-                <div className="absolute top-2 inset-x-2 bg-emerald-600/90 text-white text-[11px] font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
-                  Ball-in-Hand: Drag cue ball
-                </div>
-              )}
+            <div className="w-5 h-5 rounded-full bg-black border border-white/25 flex items-center justify-center text-white text-[10px] font-black shadow-inner">
+              8
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any'} •</span>
+              <span className="text-[10px] font-black uppercase text-player-2">
+                {gameMode === 'pve' ? 'CPU' : 'P2'} ({p2Group || 'Open'})
+              </span>
+              <span className={`w-2.5 h-2.5 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
             </div>
           </div>
+        )}
 
-          {/* Tactical Right Sidebar Controls in Landscape */}
-          <aside className="w-36 sm:w-44 h-full max-h-[calc(100dvh-80px)] flex flex-col justify-between p-2.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-xl shrink-0 gap-2">
+        {/* Dynamic Full-Screen Pool Table Arena (Vertical in Portrait, Horizontal in Landscape) */}
+        <div
+          ref={arenaRef}
+          className="relative flex-1 min-h-0 min-w-0 w-full h-full flex items-center justify-center overflow-hidden"
+        >
+          <div
+            style={
+              tableSize.w > 0 && tableSize.h > 0
+                ? { width: `${tableSize.w}px`, height: `${tableSize.h}px` }
+                : {
+                    aspectRatio: isLandscape ? `${TABLE_WIDTH} / ${TABLE_HEIGHT}` : `${TABLE_HEIGHT} / ${TABLE_WIDTH}`,
+                    maxHeight: '100%',
+                    maxWidth: '100%',
+                  }
+            }
+            className="relative clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105] bg-[#08481e] flex items-center justify-center shrink-0"
+          >
+            <canvas
+              ref={canvasRef}
+              width={isLandscape ? TABLE_WIDTH : TABLE_HEIGHT}
+              height={isLandscape ? TABLE_HEIGHT : TABLE_WIDTH}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className="w-full h-full block touch-none cursor-crosshair"
+            />
+
+            {/* Ball In Hand Helper Overlay */}
+            {isBallInHand && !isCpuTurn && (
+              <div className="absolute top-2.5 inset-x-3 bg-emerald-600/90 text-white text-[11px] font-black text-center py-1 px-2 rounded-xl shadow-md pointer-events-none animate-pulse">
+                Ball-in-Hand: Drag the cue ball anywhere on the table
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tactical Controls: Right Dock in Landscape, Compact Bottom Bar in Portrait */}
+        {isLandscape ? (
+          <aside className="w-32 sm:w-40 h-full flex flex-col justify-between p-2 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-xl shrink-0 gap-1.5">
             {/* Scoreboard / Assigned Group Pills */}
-            <div className="flex flex-col gap-1.5 bg-black/30 p-2 rounded-xl border border-white/5">
+            <div className="flex flex-col gap-1 bg-black/30 p-2 rounded-xl border border-white/5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+                  <span className={`w-2 h-2 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
                   <span className="text-[10px] font-black uppercase text-player-1">P1</span>
                 </div>
-                <span className="text-[11px] font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Any'}</span>
+                <span className="text-[10px] font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Open'}</span>
               </div>
               <div className="h-px bg-white/10" />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
+                  <span className={`w-2 h-2 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
                   <span className="text-[10px] font-black uppercase text-player-2">{gameMode === 'pve' ? 'CPU' : 'P2'}</span>
                 </div>
-                <span className="text-[11px] font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any'}</span>
+                <span className="text-[10px] font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Open'}</span>
               </div>
             </div>
 
             {/* Power Meter Slider */}
             <div className="flex flex-col items-center gap-1 flex-1 justify-center py-1">
-              <div className="flex justify-between w-full text-[10px] font-black uppercase text-accent-light/80 px-1">
+              <div className="flex justify-between w-full text-[10px] font-black uppercase text-accent-light/80 px-0.5">
                 <span>Power</span>
                 <span>{power}%</span>
               </div>
@@ -1002,65 +1157,13 @@ export const Billiards: React.FC = () => {
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
               }`}
             >
-              {isCpuTurn ? 'CPU Shot...' : 'Shoot!'}
+              {isCpuTurn ? 'CPU Shot...' : '🎱 Shoot!'}
             </button>
           </aside>
-        </main>
-      ) : (
-        <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
-          {/* Scoreboard / Assigned Group Pills */}
-          <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-container-dark/90 border border-[#3e444c] rounded-2xl shadow-md mb-2">
-            {/* P1 Group Info */}
-            <div className="flex items-center gap-2">
-              <span className={`w-3 h-3 rounded-full ${p1Group === 'solids' ? 'bg-amber-500' : p1Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
-              <div className="text-left">
-                <span className="text-[10px] font-black uppercase text-player-1 block leading-tight">P1 {p1Group || 'Open'}</span>
-                <span className="text-xs font-bold text-accent-light">{p1Group ? `${p1BallsLeft} left` : 'Any ball'}</span>
-              </div>
-            </div>
-
-            {/* Center 8-Ball Badge */}
-            <div className="w-7 h-7 rounded-full bg-black border border-white/20 flex items-center justify-center text-white text-xs font-black shadow-inner">
-              8
-            </div>
-
-            {/* P2 Group Info */}
-            <div className="flex items-center gap-2 text-right">
-              <div className="text-right">
-                <span className="text-[10px] font-black uppercase text-player-2 block leading-tight">
-                  {gameMode === 'pve' ? 'CPU' : 'P2'} {p2Group || 'Open'}
-                </span>
-                <span className="text-xs font-bold text-accent-light">{p2Group ? `${p2BallsLeft} left` : 'Any ball'}</span>
-              </div>
-              <span className={`w-3 h-3 rounded-full ${p2Group === 'solids' ? 'bg-amber-500' : p2Group === 'stripes' ? 'bg-blue-500 ring-1 ring-white' : 'bg-stone-500'}`} />
-            </div>
-          </div>
-
-          {/* Billiards Table Canvas Container */}
-          <div className="relative flex items-center justify-center w-full max-w-2xl aspect-[620/340] clubhouse-board-depth table-flat rounded-2xl overflow-hidden shadow-2xl border-4 border-[#241105]">
-            <canvas
-              ref={canvasRef}
-              width={TABLE_WIDTH}
-              height={TABLE_HEIGHT}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              className="w-full h-full touch-none cursor-crosshair"
-            />
-
-            {/* Ball In Hand Helper Overlay */}
-            {isBallInHand && !isCpuTurn && (
-              <div className="absolute top-3 inset-x-3 bg-emerald-600/90 text-white text-xs font-black text-center py-1 rounded-xl shadow-md pointer-events-none animate-pulse">
-                Ball-in-Hand: Drag the cue ball anywhere on the table
-              </div>
-            )}
-          </div>
-
-          {/* Tactical Controls: Rotary Aim & Strike Bar */}
-          <div className="w-full max-w-2xl flex items-center justify-between gap-3 mt-2 px-2">
+        ) : (
+          <div className="w-full max-w-xl shrink-0 flex items-center justify-between gap-3 px-3 py-1.5 bg-container-dark/95 border border-[#3e444c] rounded-2xl shadow-md">
             {/* Power Meter Slider */}
-            <div className="flex-1 flex flex-col gap-1">
+            <div className="flex-1 flex flex-col gap-0.5">
               <div className="flex justify-between text-[10px] font-black uppercase text-accent-light/80">
                 <span>Strike Power</span>
                 <span>{power}%</span>
@@ -1080,17 +1183,17 @@ export const Billiards: React.FC = () => {
             <button
               onClick={handleStrike}
               disabled={isMoving || isBallInHand || winner !== null || isCpuTurn}
-              className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
+              className={`px-5 py-2 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 shrink-0 ${
                 isMoving || isBallInHand || isCpuTurn
                   ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border border-amber-300'
               }`}
             >
-              {isCpuTurn ? 'CPU Shot...' : 'Shoot!'}
+              {isCpuTurn ? 'CPU Shot...' : '🎱 Shoot!'}
             </button>
           </div>
-        </main>
-      )}
+        )}
+      </main>
 
       {/* Game Over Modal */}
       {winner !== null && (

@@ -5,6 +5,19 @@ All notable changes to the **Tabletop Games** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-10-19 — "Billiards (8-Ball Pool) Mobile Orientation Fix & Full-Screen Portrait/Landscape Table Layout"
+
+### Fixed & Improved — Billiards Mobile Rotation & Screen Utilization (`src/games/Billiards.tsx`)
+- **Fixed Disappearing Pool Table on Device Rotation**:
+  - Unified the Portrait and Landscape `<main>` / `<canvas ref={canvasRef}>` JSX branches into a single persistent `<canvas>` DOM element so rotating a mobile device sideways no longer unmounts the active canvas mid-game.
+  - Resolved `canvasRef.current` and its 2D context dynamically inside the `requestAnimationFrame` render loop on every frame with HiDPI (`window.devicePixelRatio`) scaling so canvas resizes and orientation transitions render continuously without frame loss.
+- **Full-Screen Portrait (Vertical) & Landscape (Horizontal) Mobile Table Utilization**:
+  - Added a `ResizeObserver` on the game arena (`arenaRef`) with `resize` and `orientationchange` listeners to compute exact pixel dimensions (`tableSize.w × tableSize.h`) that maximize the pool table within the available viewport without WebKit flexbox aspect-ratio collapse.
+  - Oriented the pool table **vertically (`340 × 620`) in Portrait mode** (break kitchen positioned at the bottom under the player's thumb, 8-ball rack at the top, with counter-rotated upright ball numbers and inverse pointer coordinate mapping) and **horizontally (`620 × 340`) in Landscape mode**, expanding portrait mobile table size by ~2.5× while preserving seamless live rotation between orientations.
+  - Compacted mobile landscape side panels (`w-[138px]` / `sm:w-44`) and portrait top/bottom HUD strips (`py-1.5 px-2`) to dedicate maximum screen area to the pool table felt, rails, and diamond sights.
+
+---
+
 ## [2.2.0] - 2026-10-19 — "Cribbage Rules & Gameplay Overhaul, Mobile-First Catalog Filters & Favorites, Global Audio/Haptics Persistence & 100% CPU AI Coverage"
 
 ### Fixed & Overhauled — Cribbage Rules, State Machine & AI (`src/games/Cribbage.tsx`, `src/utils/cribbageAi.ts`)
